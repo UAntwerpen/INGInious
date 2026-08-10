@@ -18,6 +18,10 @@ services:
     image: ${REGISTRY}/inginious/env-python3:${VERSION}
     command: /bin/true
 
+  env-computer-graphics:
+    image: ${REGISTRY}/uantwerpen/inginious/env-computer-graphics:${VERSION}
+    command: /bin/true
+
   base:
     image: ${REGISTRY}/inginious/core-base:${VERSION}
     build:
@@ -29,6 +33,8 @@ services:
 
   db:
     image: mongo:6.0.2
+    volumes:
+      - mongodb_data:/data/db
     networks:
       - inginious
 
@@ -112,6 +118,7 @@ services:
       - ./configuration.deploy.yaml:/inginious/configuration.yaml
       - ./tasks/:/inginious/tasks
       - ./backups/:/inginious/backups
+      - ./uantwerpen/:/inginious/uantwerpen/
     ports:
       - 9000:8080
     networks:
@@ -119,3 +126,7 @@ services:
 
 networks:
   inginious:
+
+volumes:
+  mongodb_data:
+

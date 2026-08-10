@@ -191,7 +191,7 @@ class SignInPage(INGIniousAuthPage):
 
     def GET(self):
         return INGIniousAuthPage.GET(self)
-
+        # return render_template("forbidden.html", message=_("Sign in and registration are no longer available."))
 
 class LogOutPage(INGIniousAuthPage):
     def GET_AUTH(self, *args, **kwargs):

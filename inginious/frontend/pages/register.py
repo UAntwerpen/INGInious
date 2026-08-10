@@ -12,7 +12,6 @@ import logging
 
 from flask import current_app, session, render_template
 from flask_mail import Message
-from werkzeug.exceptions import Forbidden
 from mongoengine import Q
 
 from inginious.frontend.pages.utils import INGIniousPage
@@ -28,21 +27,7 @@ class RegistrationPage(INGIniousPage):
 
     def GET(self):
         """ Handles GET request """
-        if session.loggedin or not current_app.config.get("ALLOW_REGISTRATION"):
-            raise Forbidden(description=_("You're not allow to register."))
-
-        error = False
-        reset = None
-        msg = ""
-        data = flask.request.args
-
-        if "activate" in data:
-            error = not self.user_manager.activate_user(data["activate"])
-            msg = _("Invalid activation hash.") if error else _("User successfully activated.")
-        elif "reset" in data:
-            msg, error, reset = self.get_reset_data(data)
-
-        return render_template("register.html", reset=reset, msg=msg, error=error)
+        return render_template("forbidden.html", message=_("Sign in and registration are no longer available."))
 
     def get_reset_data(self, data):
         """ Returns the user info to reset """
@@ -186,22 +171,4 @@ Someone (probably you) asked to reset your INGInious password. If this was you, 
 
     def POST(self):
         """ Handles POST request """
-        if session.loggedin or not current_app.config.get("ALLOW_REGISTRATION"):
-            raise Forbidden(description=_("You're not allow to register."))
-
-        reset = None
-        msg = ""
-        error = False
-        data = flask.request.form
-        if "register" in data:
-            msg, error = self.register_user(data)
-        elif "lostpasswd" in data:
-            msg, error = self.lost_passwd(data)
-        elif "resetpasswd" in data:
-            msg, error, reset = self.get_reset_data(data)
-            if reset:
-                msg, error = self.reset_passwd(data)
-            if not error:
-                reset = None
-
-        return render_template("register.html", reset=reset, msg=msg, error=error)
+        return render_template("forbidden.html", message=_("Sign in and registration are no longer available."))

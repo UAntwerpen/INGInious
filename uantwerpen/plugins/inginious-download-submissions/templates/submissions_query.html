@@ -1,0 +1,199 @@
+{# This file is part of INGInious. See the LICENSE and the COPYRIGHTS files for #}
+{# more information about the licensing of this file. #}
+
+
+<script>
+    $(function() {
+        $('#date_before_picker').datetimepicker({locale: '{{ user_manager.session_language() }}', sideBySide: true, format:'YYYY-MM-DD HH:mm:ss'});
+        $('#date_after_picker').datetimepicker({locale: '{{ user_manager.session_language() }}', sideBySide: true, format:'YYYY-MM-DD HH:mm:ss'});
+
+        $('#panel-user-audience').find('a[data-toggle="tab"]').on('shown.bs.tab', function(e)
+        {
+            if($(e.target).attr('href') == "#audience_filter")  $('input[type="checkbox"]', $('#user_filter')).prop('checked', false).change()
+            else $('input[type="checkbox"]', $('#audience_filter')).prop('checked', false).change();
+        });
+
+    });
+</script>
+
+
+<div class="card mb-3 section">
+    <div id="query_header" class="card-header" onclick="dropdown(this)">
+        <span class="title"> {{ _("Query submissions") }} </span>
+        <span style="font-size: 1.5rem;" class="dropdown_button fa fa-caret-down close"> </span>
+    </div>
+
+    <div class="card-body content">
+        <form id="select_form" method="post" action="{{ target }}">
+            <!-- Users -->
+            {% set show_audiences = not old_params["users"] and old_params["audiences"] %}
+            <div id="panel-user-audience" class="card mb-3">
+                <div class="card-header">
+                    <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                        <li role="presentation" class="nav-item">
+                            <a class="nav-link {% if not show_audiences %}active{% endif %}" href="#user_filter" aria-controls="user_filter"
+                               role="tab" data-toggle="tab">{{ _("Select students") }}</a>
+                        </li>
+                        <li role="presentation" class="nav-item">
+                            <a class="nav-link {% if show_audiences %}active{% endif %}" href="#audience_filter" aria-controls="audience_filter"
+                               role="tab" data-toggle="tab">{{ _('Select audiences') }}</a>
+                        </li>
+
+                        <li class="nav-item">
+                            <button type="button" class="ml-3 btn btn-primary btn-xs" onclick="download_page_select_active(true, this)">{{ _("Select all") }}</button>
+                        </li>
+                        <li class="nav-item">
+                            <button type="button" class="btn btn-primary btn-xs" onclick="download_page_select_active(false, this)">{{ _("Deselect all") }}</button>
+                        </li>
+                        {% if tutored_users|length != 0 or tutored_audiences|length != 0 %}
+                            <li class="nav-item">
+                                <button type="button" class="btn btn-primary btn-xs" onclick="download_page_select_tutor(this,
+                                    ['{{ tutored_users | join("','") }}'], ['{{ tutored_audiences | join("','") }}'])"> {{ _("Tutored only") }}</button>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+
+                <div class="tab-content">
+                    <div role="tabpanel" class="tab-pane {% if not show_audiences %} active {% endif %}" id="user_filter">
+                        {% if users|length == 0 %}
+                            <div class="alert alert-warning">{{ _("No user to display") }}</div>
+                        {% else %}
+                            <ul class="list-group list-group-flush checked-list-box">
+                                {% for userid, username in users.items() %}
+                                    <li class="list-group-item"
+                                        data-checked="{{'true' if userid in old_params['users'] and not show_audiences else 'false' }}"
+                                        data-value="{{ userid }}" data-name="users">{{ username }} ({{ userid }})</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </div>
+
+                    <div role="tabpanel" class="tab-pane {% if show_audiences %} active {% endif %}" id="audience_filter">
+                        {% if audiences|length == 0 %}
+                            <div class="alert alert-warning">{{ _('No audience to display') }}</div>
+                        {% else %}
+                            <ul class="list-group list-group-flush checked-list-box">
+                                {% for audience in audiences %}
+                                    <li class="list-group-item" data-value="{{ audience['_id'] }}" data-name="audiences"
+                                        data-checked="{{ 'true' if str(audience['_id']) in old_params['audiences'] and show_audiences else 'false' }}">
+                                        {{ audience['description'] }}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Tasks -->
+                <div class="col-sm-8">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                            <li class="nav-item">
+                                <span class="nav-link active" href="#" role="tab" data-toggle="tab">{{ _("Select tasks") }}</span>
+                            </li>
+                            <li class="nav-item">
+                                <button type="button" class="ml-3 btn btn-primary btn-xs" onclick="download_page_select(true, this)">{{ _("Select all") }}</button>
+                            </li>
+                            <li class="nav-item">
+                                <button type="button" class="btn btn-primary btn-xs" onclick="download_page_select(false, this)">{{ _("Deselect all") }}</button>
+                            </li>
+                        </ul>
+
+                    </div>
+                    <ul class="list-group list-group-flush checked-list-box">
+                        {% for taskid, task in tasks.items() %}
+                            <li class="list-group-item" data-value="{{taskid}}" data-name="tasks" data-checked="{{ 'true' if taskid in old_params['tasks'] else 'false' }}">
+                                {{ task.get_name(user_manager.session_language()) }}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                </div>
+
+                <!-- Organisational Tags -->
+                <div class="col-sm-4">
+                <div class="card">
+                    <div class="card-header">
+                        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                            <li class="nav-item">
+                                <span class="nav-link active" href="#" role="tab" data-toggle="tab">{{ _("Select tags") }}</span>
+                            </li>
+                            <li class="nav-item">
+                                <button type="button" class="ml-3 btn btn-primary btn-xs" onclick="download_page_select(true, this)">{{ _("Select all") }}</button>
+                            </li>
+                            <li class="nav-item">
+                                <button type="button" class="btn btn-primary btn-xs" onclick="download_page_select(false, this)">{{ _("Deselect all") }}</button>
+                            </li>
+                        </ul>
+
+                    </div>
+                    <ul class="list-group list-group-flush checked-list-box">
+                        {% for key, t in course.get_tags().items() %}
+                            {% if t.get_type() == 2 %}
+                                <li class="list-group-item" data-value="{{ key }}" data-name="org_tags" data-checked="{{ 'true' if key in old_params['org_tags'] else 'false' }}">
+                                    {{ t.get_name(user_manager.session_language()) }}
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+                    </ul>
+                </div>
+                </div>
+            </div>
+
+            <!-- Run Plagiarism Check query -->
+            <div class="row">
+                <div class="col-sm-12 form-group">
+                    <div class="card section">
+                        <div class="card-header">
+                            <span class="title">{{ _("Plagiarism Check [FIRST RAW VERSION]") }}</span>
+                        </div>
+                        <div class="content card-body">
+                            <div class="col-xs-12 form-group">
+                                <div class="form-check form-check-inline">
+                                    <label class="form-check-label"></label>
+                                    <input name="run_plagiarism" class="form-check-input" type="checkbox">
+                                    Run Check, when checked no submissions are downloaded but you get redirected to the plagiarism results
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter file types from .zip archives
+            <div class="row">
+                <div class="col-sm-12 form-group">
+                    <div class="card section">
+                        <div class="card-header">
+                            <span class="title">{{ _("File Type Filter [NOT IMPLEMENTED YET]") }}</span>
+                        </div>
+                        <div class="content card-body">
+                            <div class="form-group row">
+                                <label for="extensions-PID" class="col-sm-2 control-label">{{ _("Allowed file extensions (including the dot, separated by spaces)") }}</label>
+                                <div class="col-sm-10">
+                                    <input type="text" class="form-control" id="extensions-filter" name="extensions-filter" placeholder=".cpp .h .py"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            -->
+
+
+            <!-- Validate -->
+            <div class="btn-group pull-right mb-2">
+                <button type="button" class="btn btn-danger btn-block m-1 p-2 pl-4 pr-4" onclick="window.location.href='{{get_homepath()}}/admin/{{course.get_id()}}/download'">
+                    <i class="fa fa-undo"></i> {{ _("Reset") }}
+                </button>
+                <button type="submit" class="btn btn-primary btn-block m-1 p-2 pl-4 pr-4">
+                    <i class="fa fa-check"></i> {{ _("Download") }}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
