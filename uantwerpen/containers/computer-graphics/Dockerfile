@@ -36,21 +36,20 @@ RUN dnf -y install \
     && cd Python-${PYTHON_VERSION} \
     && ./configure --with-ensurepip=install \
     && make -j$(nproc) \
-    && make altinstall
+    && make altinstall \
+    && dnf clean all \
+    && rm -rf /tmp/Python*
 
 # Make Python 3.10 the default python3
 RUN ln -sf /usr/local/bin/python3.10 /bin/python3
-
-# Upgrade pip and install packages for Python 3.10
-RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && python3 -m pip install --no-cache-dir numpy scikit-image jinja2 msgpack pyzmq pyyaml
 
 # Copy inginious_container_api from system python to Python 3.10
 RUN cp -r /usr/lib/python*/site-packages/inginious_container_api* \
           /usr/local/lib/python3.10/site-packages/ || true
 
-# Cleanup
-RUN rm -rf /tmp/Python* && dnf clean all
+# Upgrade pip and install packages for Python 3.10
+RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && python3 -m pip install --no-cache-dir numpy scikit-image jinja2 msgpack pyzmq pyyaml
 
 # -------------------------
 # Verification
