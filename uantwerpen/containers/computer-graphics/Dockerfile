@@ -14,12 +14,11 @@ RUN dnf -y install dnf-utils
 RUN dnf -y install dnf-plugins-core && \
     dnf config-manager --set-enabled crb || true
 
-# Install GCC 13 toolset
-RUN dnf -y install gcc-toolset-13
+# Install GCC (13+ ships natively in Rocky Linux 10)
+RUN dnf -y install gcc gcc-c++ make
 
-# Make GCC 13 default
-RUN echo "source /opt/rh/gcc-toolset-13/enable" >> /etc/profile.d/gcc13.sh
-ENV PATH=/opt/rh/gcc-toolset-13/root/usr/bin:$PATH
+# Verify GCC version
+RUN gcc --version && g++ --version
 
 # -------------------------
 # Install Python 3.10
