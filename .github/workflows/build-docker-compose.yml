@@ -8,6 +8,7 @@ on:
       - base-containers/base/**
       - deploy/Containerfile
       - docker-compose.yml
+      - uantwerpen/containers/**
       - .github/workflows/build-docker-compose.yml
 
   workflow_dispatch:
@@ -135,3 +136,12 @@ jobs:
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
+      - name: Build and push env-computer-graphics
+        uses: docker/build-push-action@v6
+        with:
+          context: ./
+          file: ./uantwerpen/containers/computer-graphics/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/uantwerpen/inginious/env-computer-graphics:latest
+            ghcr.io/uantwerpen/inginious/env-computer-graphics:${{ env.VERSION }}

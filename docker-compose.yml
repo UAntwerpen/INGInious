@@ -33,6 +33,17 @@ services:
         - REGISTRY=${REGISTRY}
     command: /bin/true
 
+  env-computer-graphics:
+    image: ${REGISTRY}/uantwerpen/inginious/env-computer-graphics:${VERSION}
+    attach: false
+    build:
+      context: uantwerpen/containers/computer-graphics/
+      target: env-computer-graphics
+      args:
+        - VERSION=${VERSION}
+        - REGISTRY=${REGISTRY}
+    command: /bin/true
+
   db:
     image: mongo:6.0.2
     volumes:
