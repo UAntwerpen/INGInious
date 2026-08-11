@@ -6,6 +6,11 @@ function load_input_extra_test(submissionid, key, input) {
         $(field).prop('value', "");
 }
 
+function load_feedback_extra_test(key, content) {
+    // Reuse the standard per-problem alert renderer.
+    load_feedback_code(key, content);
+}
+
 function studio_init_template_extra_test(well, pid, problem)
 {
 

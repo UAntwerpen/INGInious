@@ -2,8 +2,10 @@
 
 import os
 
+from flask import render_template
 from flask import send_from_directory
-from flask import render_template_string
+
+from gettext import gettext as _
 
 from inginious.common.tasks_problems import Problem
 from inginious.frontend.task_problems import DisplayableProblem
@@ -26,16 +28,17 @@ class TestProblem(Problem):
         return "extra_test"
 
     def input_is_consistent(self, task_input, default_allowed_extension, default_max_size):
-        return True
+        value = task_input.get(self.get_id())
+        return value is None or isinstance(value, str)
 
     def input_type(self):
-        return None
+        return str
 
     def check_answer(self, _, __):
         return None, None, None, 0, ""
 
     @classmethod
-    def parse_problem(self, problem_content):
+    def parse_problem(cls, problem_content):
         return Problem.parse_problem(problem_content)
 
     @classmethod
@@ -55,20 +58,13 @@ class DisplayableTestProblem(TestProblem, DisplayableProblem):
         return _("extra_test")
 
     def show_input(self, language, seed):
-        """ Show Extra test """
+        """Show extra-test block in task statement."""
         header = ParsableText(self.gettext(language, self._header), "rst")
-        template_path = os.path.join(PATH_TO_TEMPLATES, "extra_test.html")
-        with open(template_path, 'r') as f:
-            template_content = f.read()
-        return render_template_string(template_content, inputId=self.get_id(), header=header)
+        return render_template("extra_test/extra_test.html", inputId=self.get_id(), header=header)
 
     @classmethod
     def show_editbox(cls, key, language):
-        # Load and render the template directly from the plugin templates folder
-        template_path = os.path.join(PATH_TO_TEMPLATES, "extra_test_edit.html")
-        with open(template_path, 'r') as f:
-            template_content = f.read()
-        return render_template_string(template_content, key=key)
+        return render_template("extra_test/extra_test_edit.html", key=key)
 
     @classmethod
     def show_editbox_templates(cls, key, language):
@@ -83,6 +79,7 @@ class StaticMockPage(INGIniousPage):
         return self.GET(path)
 
 def init(plugin_manager, client, plugin_config):
+    plugin_manager.add_template_prefix("extra_test", PATH_TO_TEMPLATES)
     plugin_manager.add_page('/plugins/extra_test/static/<path:path>', StaticMockPage.as_view("extratestpage"))
     plugin_manager.add_hook("javascript_header", lambda: "/plugins/extra_test/static/extra_test.js")
-    # course_factory.get_task_factory().add_problem_type(DisplayableTestProblem)
+    # Problem types are auto-discovered from DisplayableProblem subclasses.

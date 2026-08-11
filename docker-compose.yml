@@ -78,7 +78,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # See https://github.com/INGInious/INGInious/issues/352
-      - ./tasks:/inginious/tasks
+      - ./uantwerpen/courses/:/inginious/tasks
       - ./backups:/inginious/backups
       # See https://github.com/INGInious/INGInious/issues/799
       - /tmp/agent_data:/tmp/agent_data
@@ -102,8 +102,8 @@ services:
       BACKEND: "tcp://backend:2001"
     volumes:
       # See https://github.com/INGInious/INGInious/issues/352
-      - ./tasks:/inginious/tasks
       - ./backups:/inginious/backups
+      - ./uantwerpen/courses/:/inginious/tasks
       # See https://github.com/INGInious/INGInious/issues/799
       - /tmp/agent_data:/tmp/agent_data
     networks:
@@ -128,6 +128,7 @@ services:
       - ./configuration.deploy.yaml:/inginious/configuration.yaml
       - ./tasks:/inginious/tasks
       - ./backups:/inginious/backups
+      - ./uantwerpen:/inginious/uantwerpen
     ports:
       - 9000:8080
     healthcheck:
