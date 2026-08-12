@@ -33,19 +33,19 @@ services:
         - REGISTRY=${REGISTRY}
     command: /bin/true
 
-  env-cpp-gcc8:
-    image: ${REGISTRY}/inginious/env-cpp-gcc8:${VERSION}
+  env-cpp:
+    image: ${REGISTRY}/uantwerpen/inginious/env-cpp:${VERSION}
     attach: false
     build:
-      context: base-containers/base/
-      target: env-cpp-gcc8
+      context: uantwerpen/containers/cpp/
+      target: env-cpp
       args:
         - VERSION=${VERSION}
         - REGISTRY=${REGISTRY}
     command: /bin/true
 
   env-computer-graphics:
-    image: ${REGISTRY}/inginious/env-computer-graphics:${VERSION}
+    image: ${REGISTRY}/uantwerpen/inginious/env-computer-graphics:${VERSION}
     attach: false
     build:
       context: uantwerpen/containers/computer-graphics/
@@ -76,7 +76,7 @@ services:
     networks:
       - inginious
 
-  agent-docker:
+   agent-docker:
     image: ${REGISTRY}/inginious/core-agent_docker:${VERSION}
     depends_on:
       backend:
@@ -86,6 +86,10 @@ services:
       env-default:
         condition: service_completed_successfully
       env-python3:
+        condition: service_completed_successfully
+      env-cpp:
+        condition: service_completed_successfully
+      env-computer-graphics:
         condition: service_completed_successfully
     deploy:
       replicas: 1

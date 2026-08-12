@@ -84,33 +84,20 @@ jobs:
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
-      - name: Build and push env-python3
-        uses: docker/build-push-action@v6
-        with:
-          context: ./base-containers/base/
-          target: env-python3
-          push: true
-          tags: |
-            ghcr.io/uantwerpen/inginious/env-python3:latest
-            ghcr.io/uantwerpen/inginious/env-python3:${{ env.VERSION }}
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            REGISTRY=${{ env.REGISTRY }}
+       - name: Build and push env-python3
+         uses: docker/build-push-action@v6
+         with:
+           context: ./base-containers/base/
+           target: env-python3
+           push: true
+           tags: |
+             ghcr.io/uantwerpen/inginious/env-python3:latest
+             ghcr.io/uantwerpen/inginious/env-python3:${{ env.VERSION }}
+           build-args: |
+             VERSION=${{ env.VERSION }}
+             REGISTRY=${{ env.REGISTRY }}
 
-      - name: Build and push env-cpp-gcc8
-        uses: docker/build-push-action@v6
-        with:
-          context: ./base-containers/base/
-          target: env-cpp-gcc8
-          push: true
-          tags: |
-            ghcr.io/uantwerpen/inginious/env-cpp-gcc8:latest
-            ghcr.io/uantwerpen/inginious/env-cpp-gcc8:${{ env.VERSION }}
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            REGISTRY=${{ env.REGISTRY }}
-
-      # Build core images (from deploy/Containerfile with multiple targets)
+       # Build core images (from deploy/Containerfile with multiple targets)
       - name: Build and push core-backend
         uses: docker/build-push-action@v6
         with:
@@ -167,12 +154,26 @@ jobs:
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
-      - name: Build and push env-computer-graphics
-        uses: docker/build-push-action@v6
-        with:
-          context: ./
-          file: ./uantwerpen/containers/computer-graphics/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/uantwerpen/inginious/env-computer-graphics:latest
-            ghcr.io/uantwerpen/inginious/env-computer-graphics:${{ env.VERSION }}
+       - name: Build and push env-computer-graphics
+         uses: docker/build-push-action@v6
+         with:
+           context: ./uantwerpen/containers/computer-graphics/
+           push: true
+           tags: |
+             ghcr.io/uantwerpen/inginious/env-computer-graphics:latest
+             ghcr.io/uantwerpen/inginious/env-computer-graphics:${{ env.VERSION }}
+           build-args: |
+             VERSION=${{ env.VERSION }}
+             REGISTRY=${{ env.REGISTRY }}
+
+       - name: Build and push env-cpp
+         uses: docker/build-push-action@v6
+         with:
+           context: ./uantwerpen/containers/cpp/
+           push: true
+           tags: |
+             ghcr.io/uantwerpen/inginious/env-cpp:latest
+             ghcr.io/uantwerpen/inginious/env-cpp:${{ env.VERSION }}
+           build-args: |
+             VERSION=${{ env.VERSION }}
+             REGISTRY=${{ env.REGISTRY }}

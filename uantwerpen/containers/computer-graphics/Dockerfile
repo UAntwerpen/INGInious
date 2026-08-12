@@ -5,6 +5,7 @@ ARG REGISTRY=ghcr.io
 FROM ${REGISTRY}/inginious/env-base:${VERSION} AS env-computer-graphics
 
 LABEL org.inginious.grading.name="computer-graphics"
+LABEL org.inginious.grading.agent_version=4
 LABEL org.opencontainers.image.source=https://github.com/UAntwerpen/INGInious
 
 # Install Development Tools
