@@ -48,8 +48,11 @@ RUN cp -r /usr/lib/python*/site-packages/inginious_container_api* \
           /usr/local/lib/python3.10/site-packages/ || true
 
 # Upgrade pip and install packages for Python 3.10
+# Must include all packages that INGInious base scripts require (msgpack, pyzmq, pydevd-pycharm, etc.)
 RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && python3 -m pip install --no-cache-dir numpy scikit-image jinja2 msgpack pyzmq pyyaml
+    && python3 -m pip install --no-cache-dir \
+        msgpack pyzmq jinja2 PyYAML timeout-decorator pydevd-pycharm \
+        numpy scikit-image
 
 # -------------------------
 # Verification
