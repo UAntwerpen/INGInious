@@ -97,6 +97,19 @@ jobs:
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
+      - name: Build and push env-cpp-gcc8
+        uses: docker/build-push-action@v6
+        with:
+          context: ./base-containers/base/
+          target: env-cpp-gcc8
+          push: true
+          tags: |
+            ghcr.io/uantwerpen/inginious/env-cpp-gcc8:latest
+            ghcr.io/uantwerpen/inginious/env-cpp-gcc8:${{ env.VERSION }}
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            REGISTRY=${{ env.REGISTRY }}
+
       # Build core images (from deploy/Containerfile with multiple targets)
       - name: Build and push core-backend
         uses: docker/build-push-action@v6

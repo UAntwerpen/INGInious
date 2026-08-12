@@ -359,11 +359,18 @@ class INGIniousMainRunner:
             with open(oom_group_path, "r", encoding="utf-8") as f:
                 oom_group = f.read().strip()
             if oom_group == "0":
-                inginious_container_api.feedback.set_global_result('crash')
-                inginious_container_api.feedback.set_global_feedback(
-                    "Cgroup flag memory.oom.group is not set. Please refer to the setup documentation."
-                )
-                ok_to_start = False
+                # Some container runtimes do not expose this as 1. Keep strict mode opt-in.
+                enforce_oom_group = os.environ.get("INGINIOUS_ENFORCE_OOM_GROUP", "false").lower() in ["1", "true", "yes"]
+                if enforce_oom_group:
+                    inginious_container_api.feedback.set_global_result('crash')
+                    inginious_container_api.feedback.set_global_feedback(
+                        "Cgroup flag memory.oom.group is not set. Please refer to the setup documentation."
+                    )
+                    ok_to_start = False
+                else:
+                    self._logger.warning(
+                        "Cgroup flag memory.oom.group is 0; continuing because INGINIOUS_ENFORCE_OOM_GROUP is disabled"
+                    )
 
         # Add some elements to /etc/hosts and /etc/resolv.conf if needed
         system_files = {"hosts": ("/etc/hosts", True), "resolv.conf": ("/etc/resolv.conf", False)}

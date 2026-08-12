@@ -33,8 +33,19 @@ services:
         - REGISTRY=${REGISTRY}
     command: /bin/true
 
+  env-cpp-gcc8:
+    image: ${REGISTRY}/inginious/env-cpp-gcc8:${VERSION}
+    attach: false
+    build:
+      context: base-containers/base/
+      target: env-cpp-gcc8
+      args:
+        - VERSION=${VERSION}
+        - REGISTRY=${REGISTRY}
+    command: /bin/true
+
   env-computer-graphics:
-    image: ${REGISTRY}/uantwerpen/inginious/env-computer-graphics:${VERSION}
+    image: ${REGISTRY}/inginious/env-computer-graphics:${VERSION}
     attach: false
     build:
       context: uantwerpen/containers/computer-graphics/
