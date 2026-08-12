@@ -65,8 +65,8 @@ jobs:
           target: env-base
           push: true
           tags: |
-            ghcr.io/uantwerpen/inginious/env-base:latest
-            ghcr.io/uantwerpen/inginious/env-base:${{ env.VERSION }}
+            ghcr.io/inginious/env-base:latest
+            ghcr.io/inginious/env-base:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
@@ -78,8 +78,8 @@ jobs:
           target: env-default
           push: true
           tags: |
-            ghcr.io/uantwerpen/inginious/env-default:latest
-            ghcr.io/uantwerpen/inginious/env-default:${{ env.VERSION }}
+            ghcr.io/inginious/env-default:latest
+            ghcr.io/inginious/env-default:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
@@ -91,8 +91,8 @@ jobs:
           target: env-python3
           push: true
           tags: |
-            ghcr.io/uantwerpen/inginious/env-python3:latest
-            ghcr.io/uantwerpen/inginious/env-python3:${{ env.VERSION }}
+            ghcr.io/inginious/env-python3:latest
+            ghcr.io/inginious/env-python3:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
@@ -106,8 +106,8 @@ jobs:
           target: backend
           push: true
           tags: |
-            ghcr.io/uantwerpen/inginious/core-backend:latest
-            ghcr.io/uantwerpen/inginious/core-backend:${{ env.VERSION }}
+            ghcr.io/inginious/core-backend:latest
+            ghcr.io/inginious/core-backend:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
@@ -120,8 +120,8 @@ jobs:
           target: agent_docker
           push: true
           tags: |
-            ghcr.io/uantwerpen/inginious/core-agent_docker:latest
-            ghcr.io/uantwerpen/inginious/core-agent_docker:${{ env.VERSION }}
+            ghcr.io/inginious/core-agent_docker:latest
+            ghcr.io/inginious/core-agent_docker:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
@@ -134,8 +134,8 @@ jobs:
           target: agent_mcq
           push: true
           tags: |
-            ghcr.io/uantwerpen/inginious/core-agent_mcq:latest
-            ghcr.io/uantwerpen/inginious/core-agent_mcq:${{ env.VERSION }}
+            ghcr.io/inginious/core-agent_mcq:latest
+            ghcr.io/inginious/core-agent_mcq:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
@@ -148,8 +148,8 @@ jobs:
           target: frontend
           push: true
           tags: |
-            ghcr.io/uantwerpen/inginious/core-frontend:latest
-            ghcr.io/uantwerpen/inginious/core-frontend:${{ env.VERSION }}
+            ghcr.io/inginious/core-frontend:latest
+            ghcr.io/inginious/core-frontend:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
