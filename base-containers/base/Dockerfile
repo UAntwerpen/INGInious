@@ -67,3 +67,12 @@ FROM  env-base AS env-python3
 
 LABEL org.opencontainers.image.description="Python 3 INGInious grading environment."
 LABEL org.inginious.grading.name="python3"
+
+##############
+# ENV-CPP-GCC8
+##############
+
+FROM  env-base AS env-cpp-gcc8
+
+LABEL org.opencontainers.image.description="C++ (GCC 8) INGInious grading environment."
+LABEL org.inginious.grading.name="cpp-gcc8"
