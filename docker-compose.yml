@@ -47,7 +47,7 @@ services:
   db:
     image: mongo:6.0.2
     volumes:
-      - ./db:/data/db
+      - ./db:/data/db:z
     networks:
       - inginious
 
@@ -86,13 +86,15 @@ services:
         - REGISTRY=${REGISTRY}
     environment:
       BACKEND: "tcp://backend:2001"
+    security_opt:
+      - "label=disable"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:z
       # See https://github.com/INGInious/INGInious/issues/352
-      - ./uantwerpen/courses/:/inginious/tasks
-      - ./backups:/inginious/backups
+      - ./uantwerpen/courses/:/inginious/tasks:z
+      - ./backups:/inginious/backups:z
       # See https://github.com/INGInious/INGInious/issues/799
-      - /tmp/agent_data:/tmp/agent_data
+      - /tmp/agent_data:/tmp/agent_data:z
     networks:
       - inginious
 
@@ -113,10 +115,10 @@ services:
       BACKEND: "tcp://backend:2001"
     volumes:
       # See https://github.com/INGInious/INGInious/issues/352
-      - ./backups:/inginious/backups
-      - ./uantwerpen/courses/:/inginious/tasks
+      - ./backups:/inginious/backups:z
+      - ./uantwerpen/courses/:/inginious/tasks:z
       # See https://github.com/INGInious/INGInious/issues/799
-      - /tmp/agent_data:/tmp/agent_data
+      - /tmp/agent_data:/tmp/agent_data:z
     networks:
       - inginious
 
@@ -136,10 +138,10 @@ services:
     environment:
       - INGINIOUS_WEBAPP_HOST=0.0.0.0
     volumes:
-      - ./configuration.deploy.yaml:/inginious/configuration.yaml
-      - ./tasks:/inginious/tasks
-      - ./backups:/inginious/backups
-      - ./uantwerpen:/inginious/uantwerpen
+      - ./configuration.deploy.yaml:/inginious/configuration.yaml:z
+      - ./tasks:/inginious/tasks:z
+      - ./backups:/inginious/backups:z
+      - ./uantwerpen:/inginious/uantwerpen:z
     ports:
       - 9000:8080
     healthcheck:
