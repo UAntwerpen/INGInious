@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
+  REGISTRY: ghcr.io/uantwerpen
   VERSION: ${{ github.sha }}
 
 jobs:
@@ -51,7 +51,7 @@ jobs:
           exit 1
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v5
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -59,121 +59,121 @@ jobs:
 
       # Build base environment images (from base-containers/base/Dockerfile with multiple targets)
       - name: Build and push env-base
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./base-containers/base/
           target: env-base
           push: true
           tags: |
-            ghcr.io/inginious/env-base:latest
-            ghcr.io/inginious/env-base:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/inginious/env-base:latest
+            ${{ env.REGISTRY }}/inginious/env-base:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
       - name: Build and push env-default
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./base-containers/base/
           target: env-default
           push: true
           tags: |
-            ghcr.io/inginious/env-default:latest
-            ghcr.io/inginious/env-default:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/inginious/env-default:latest
+            ${{ env.REGISTRY }}/inginious/env-default:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
       - name: Build and push env-python3
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./base-containers/base/
           target: env-python3
           push: true
           tags: |
-            ghcr.io/inginious/env-python3:latest
-            ghcr.io/inginious/env-python3:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/inginious/env-python3:latest
+            ${{ env.REGISTRY }}/inginious/env-python3:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
       # Build core images (from deploy/Containerfile with multiple targets)
       - name: Build and push core-backend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: ./deploy/Containerfile
           target: backend
           push: true
           tags: |
-            ghcr.io/inginious/core-backend:latest
-            ghcr.io/inginious/core-backend:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/inginious/core-backend:latest
+            ${{ env.REGISTRY }}/inginious/core-backend:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
       - name: Build and push core-agent_docker
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: ./deploy/Containerfile
           target: agent_docker
           push: true
           tags: |
-            ghcr.io/inginious/core-agent_docker:latest
-            ghcr.io/inginious/core-agent_docker:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/inginious/core-agent_docker:latest
+            ${{ env.REGISTRY }}/inginious/core-agent_docker:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
       - name: Build and push core-agent_mcq
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: ./deploy/Containerfile
           target: agent_mcq
           push: true
           tags: |
-            ghcr.io/inginious/core-agent_mcq:latest
-            ghcr.io/inginious/core-agent_mcq:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/inginious/core-agent_mcq:latest
+            ${{ env.REGISTRY }}/inginious/core-agent_mcq:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
       - name: Build and push core-frontend
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: ./deploy/Containerfile
           target: frontend
           push: true
           tags: |
-            ghcr.io/inginious/core-frontend:latest
-            ghcr.io/inginious/core-frontend:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/inginious/core-frontend:latest
+            ${{ env.REGISTRY }}/inginious/core-frontend:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
       - name: Build and push env-computer-graphics
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./uantwerpen/containers/computer-graphics/
           push: true
           tags: |
-            ghcr.io/uantwerpen/inginious/env-computer-graphics:latest
-            ghcr.io/uantwerpen/inginious/env-computer-graphics:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/inginious/env-computer-graphics:latest
+            ${{ env.REGISTRY }}/inginious/env-computer-graphics:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
       - name: Build and push env-cpp
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./uantwerpen/containers/cpp/
           push: true
           tags: |
-            ghcr.io/uantwerpen/inginious/env-cpp:latest
-            ghcr.io/uantwerpen/inginious/env-cpp:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/inginious/env-cpp:latest
+            ${{ env.REGISTRY }}/inginious/env-cpp:${{ env.VERSION }}
           build-args: |
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
