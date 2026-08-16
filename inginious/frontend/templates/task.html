@@ -3,41 +3,41 @@
 
 {% extends "layout.html" %}
 
-{% block title %} {{task.get_name(user_manager.session_language()) }} - {{ course.get_name(user_manager.session_language()) }}{% endblock %}
+{% block title %} {{task.get_name(session.language) }} - {{ course.get_name(session.language) }}{% endblock %}
 
 {% set registered = user_manager.course_is_user_registered(course) %}
-{% set staff = user_manager.has_admin_rights_on_course(course) %}
+{% set staff = user_manager.has_staff_rights_on_course(course) %}
 {% set task_dispenser = course.get_task_dispenser() %}
 
 {% block column %}
     <h3>{{ _("Information") }}</h3>
     <table class="table table-sm">
-        {% if task.get_authors(user_manager.session_language()) %}
+        {% if task.get_authors(session.language) %}
             <tr>
                 <td>{{ _("Author(s)") }}</td>
-                <td>{{ task.get_authors(user_manager.session_language()) }}</td>
+                <td>{{ task.get_authors(session.language) }}</td>
             </tr>
         {% endif %}
-        {%if task.get_contact_url(user_manager.session_language()) %}
+        {%if task.get_contact_url(session.language) %}
             <tr>
                 <td>{{ _("Contact") }}</td>
-                <td><a href="{{ task.get_contact_url(user_manager.session_language()).format(course_id=course.get_id(), task_id=task.get_id(), username=user_manager.session_username()) }}" target="_blank">{{ _("Contact link") }}</a></td>
+                <td><a href="{{ task.get_contact_url(session.language).format(course_id=course.get_id(), task_id=task.get_id(), username=session.username) }}" target="_blank">{{ _("Contact link") }}</a></td>
             </tr>
         {% endif %}
-        {% if not is_lti() %}
+        {% if not session.is_lti %}
             <tr class="
-            {% if task_dispenser.get_accessibility(task.get_id(), user_manager.session_username()).is_open() and not task_dispenser.get_accessibility(task.get_id(), user_manager.session_username()).is_open_with_soft_deadline() %}
+            {% if task_dispenser.get_accessibility(task.get_id(), session.username).is_open() and not task_dispenser.get_accessibility(task.get_id(), session.username).is_open_with_soft_deadline() %}
                 list-group-item-danger
             {% endif %}">
                 <td>{{ _("Deadline") }}</td>
                 <td>
-                    {% set accessibility = task_dispenser.get_accessibility(task.get_id(), user_manager.session_username()) %}
-                    {% if accessibility.is_always_accessible() %}
-                        {{ _("No deadline") }}
-                    {% elif accessibility.is_never_accessible() %}
+                    {% set accessibility = task_dispenser.get_accessibility(task.get_id(), session.username) %}
+                    {% if accessibility.is_never_accessible() %}
                         {{ _("It's too late") }}
+                    {% elif accessibility.get_std_soft_end_date() %}
+                        {{ show_time(accessibility.get_soft_end_date()) }}
                     {% else %}
-                        {{ accessibility.get_soft_end_date().strftime("%d/%m/%Y %H:%M:%S") }}
+                        {{ _("No deadline") }}
                     {% endif %}
                 </td>
             </tr>
@@ -68,13 +68,13 @@
             <tr>
                 <td>{{ _("Grade") }}</td>
                 <td>
-                    <span id="task_grade">{{ user_task.get('grade', 0) }}</span>%
+                    <span id="task_grade">{{ user_task.grade }}</span>%
                 </td>
             </tr>
             <tr>
                 <td>{{ _("Attempts") }}</td>
                 <td id="task_tries">
-                    {{ user_task.get('tried', 0) }}
+                    {{ user_task.tried }}
                 </td>
             </tr>
         {% endif %}
@@ -115,33 +115,33 @@
         <div class="mb-3" id="main_tag_group">
         {% for tag in visible_tags %}
             {% if tag.get_type() == 0 %}
-                <span class="badge alert-info" id="{{ tag.get_id() }}" data-placement="right" data-toggle="tooltip" title="{{ tag.get_description(user_manager.session_language()) }}" style="display:none;">{{ tag.get_name(user_manager.session_language()) }}</span>
+                <span class="badge alert-info" id="{{ tag.get_id() }}" data-placement="right" data-toggle="tooltip" title="{{ tag.get_description(session.language) }}" style="display:none;">{{ tag.get_name(session.language) }}</span>
             {% elif tag.get_type() == 1 %}
-                <span class="badge alert-danger" id="{{ tag.get_id() }}" data-placement="right" data-toggle="tooltip" title="{{ tag.get_description(user_manager.session_language()) }}" style="display:none;">{{ tag.get_name(user_manager.session_language()) }}</span>
+                <span class="badge alert-danger" id="{{ tag.get_id() }}" data-placement="right" data-toggle="tooltip" title="{{ tag.get_description(session.language) }}" style="display:none;">{{ tag.get_name(session.language) }}</span>
             {% endif %}
         {% endfor %}
         </div>
     {% endif %}
     <!-- End Tags -->
     
-    {%if not is_lti() and staff %}
+    {%if not session.is_lti and staff %}
         <h3> {{ _("Administration") }}</h3>
         {% if not course.is_open_to_non_staff() %}
             <div class="alert alert-warning" role="alert">
                 {{ _("This course is currently invisible for students.  You can change this by modifying the \"accessible\" option in the configuration of the course.") }}
             </div>
         {% endif %}
-        {% if not task_dispenser.get_accessibility(task.get_id(), user_manager.session_username()).after_start() %}
+        {% if not task_dispenser.get_accessibility(task.get_id(), session.username).after_start() %}
             <div class="alert alert-warning" role="alert">
                 {{ _("This task is currently invisible for students. You can change this by modifying the \"accessible\" option in the configuration of the task.") }}
             </div>
         {% endif %}
         <div class="list-group mb-3">
-            <a class="list-group-item list-group-item-action list-group-item-info" href="{{ get_homepath() }}/admin/{{course.get_id()}}/submissions?tasks={{task.get_id()}}">
+            <a class="list-group-item list-group-item-action list-group-item-info" href="{{ url_for('coursesubmissionspage', courseid=course.get_id(), tasks=task.get_id()) }}">
                 <i class="fa fa-files-o fa-fw"></i>&nbsp; {{ _("View submissions") }}
             </a>
             {% if user_manager.has_admin_rights_on_course(course) %}
-                <a class="list-group-item list-group-item-action list-group-item-info" href="{{ get_homepath() }}/taskset/{{course.get_taskset().get_id()}}/edit/{{task.get_id()}}">
+                <a class="list-group-item list-group-item-action list-group-item-info" href="{{ url_for('coursedittask', courseid=course.get_id(), taskid=task.get_id()) }}">
                     <i class="fa fa-edit fa-fw"></i>&nbsp;{{ _("Edit task") }}
                 </a>
                 <a href="#" class="list-group-item list-group-item-action list-group-item-info" data-toggle="modal" data-target="#modal-debug">
@@ -149,20 +149,20 @@
                 </a>
             {% endif %}
         </div>
-    {%elif not is_lti() and registered %}
+    {%elif not session.is_lti and registered %}
         <h3>{{ _("Submitting as") }}</h3>
         <div class="list-group mb-3">
             <div class="list-group-item list-group-item-action list-group-item-info">
                 {% if task_dispenser.get_group_submission(task.get_id()) %}
                     <i class="fa fa-chevron-right fa-fw"></i>&nbsp; <b>{{ _('Group') }}</b>
                 {% else %}
-                    <i class="fa fa-chevron-right fa-fw"></i>&nbsp; <b>{{ user_manager.session_realname() }}</b>
+                    <i class="fa fa-chevron-right fa-fw"></i>&nbsp; <b>{{ session.realname }}</b>
                 {% endif %}
             </div>
-            <a class="list-group-item list-group-item-action list-group-item-info" href="{{ get_homepath() }}/group/{{ course.get_id() }}">
+            <a class="list-group-item list-group-item-action list-group-item-info" href="{{ url_for('grouppage', courseid=course.get_id()) }}">
                 <i class="fa fa-group fa-fw"></i>&nbsp;
                 {% set mygroup = user_manager.get_course_user_group(course) %}
-                {% if mygroup and user_manager.session_username() in mygroup['students'] %}
+                {% if mygroup and session.username in mygroup['students'] %}
                     {{ _("Group : {}").format(mygroup['description']) }}
                 {% else %}
                     {{ _("Group management") }}
@@ -171,7 +171,9 @@
         </div>
     {% endif %}
 
-    {{ template_helper.call('task_menu', course=course, task=task, template_helper=template_helper) | safe }}
+    {% for entry in plugin_manager.call_hook('task_menu', course=course, task=task) %}
+        {{ entry | safe }}
+    {% endfor %}
     {% if registered %}
         <h3> {{ _("For evaluation") }}</h3>
         <div class="list-group mb-3">
@@ -183,9 +185,9 @@
                 {% endif %}
             </div>
             {% if eval_submission %}
-                <a href="#" id="my_submission" class="submission list-group-item list-group-item-action list-group-item-info" data-submission-id="{{ eval_submission['_id'] }}">
+                <a href="#" id="my_submission" class="submission list-group-item list-group-item-action list-group-item-info" data-submission-id="{{ eval_submission.id }}">
                     <i class="fa fa-chevron-right fa-fw"></i>
-                    {{ eval_submission["submitted_on"].strftime("%d/%m/%Y %H:%M:%S") }} - {{ eval_submission.get("grade",0.0) }}%
+                    {{ show_time(eval_submission['submitted_on']) }} - {{ eval_submission.grade }}%
                 </a>
             {% else %}
                 <div id="my_submission" class="list-group-item list-group-item-info"><i class="fa fa-chevron-right fa-fw"></i> {{ _("No submission") }}</div>
@@ -205,7 +207,7 @@
                             {% else %}
                                 list-group-item-danger
                             {% endif %}"
-                            data-submission-id="{{ submission['_id'] }}">
+                            data-submission-id="{{ submission.id }}">
 
                             <!-- Tags -->
                             {# This display a badge with the number of validated tags in each row of the submission history. #}
@@ -216,7 +218,7 @@
                                     {% set ns.class_tag = "badge alert-info" %}
                                     {% if "tests" in submission and tagid in submission["tests"] and submission["tests"][tagid] %}
                                         {% set ns.tags_ok_counter = ns.tags_ok_counter + 1 %}
-                                        {% set ns.list_tags_ok = ns.list_tags_ok + [tag.get_name(user_manager.session_language())] %}
+                                        {% set ns.list_tags_ok = ns.list_tags_ok + [tag.get_name(session.language)] %}
                                     {% endif %}
                                 {% endfor %}
                                 {% if ns.tags_ok_counter %}
@@ -224,12 +226,8 @@
                                 {% endif %}
                             {% endif %}
                             <!-- End Tags -->
-                        
-                            {% if "grade" in submission %}
-                                <span id="txt">{{ submission["submitted_on"].strftime("%d/%m/%Y %H:%M:%S") }} - {{ submission["grade"] }}%</span>
-                            {% else %}
-                                <span id="txt">{{ submission["submitted_on"].strftime("%d/%m/%Y %H:%M:%S") }}</span>
-                            {% endif %}
+
+                            <span id="txt">{{ show_time(submission['submitted_on']) }}{% if "grade" in submission %} - {{ submission["grade"] }}% {% endif %}</span>
                         </li>
                     {% endfor %}
                 {% else %}
@@ -237,7 +235,7 @@
                 {% endif %}
             </ul>
         </div>
-    {% elif not user_manager.session_logged_in() %}
+    {% elif not session.loggedin %}
         {% include "signin_button.html" %}
     {% elif course.is_registration_possible(user_info) %}
         <h3>{{ _("Enroll in the course") }}</h3>
@@ -246,7 +244,7 @@
             {{ _("Please enroll in the course to be able to submit answers to problems.") }}
         </div>
         <div class="list-group">
-            <a href="{{get_homepath()}}/register/{{course.get_id()}}" class="list-group-item list-group-item-action list-group-item-info">
+            <a href="{{url_for('courseregisterpage', courseid=course.get_id())}}" class="list-group-item list-group-item-action list-group-item-info">
                 <i class="fa fa-sign-in fa-fw"></i>&nbsp; {{ _("Enroll in the course") }}
             </a>
         </div>
@@ -258,12 +256,12 @@
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             {% if registered %}
-                <li class="breadcrumb-item"><a href="{{ get_homepath() }}/mycourses" title="{{ _('My courses') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-graduation-cap"></i></a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('mycoursespage') }}" title="{{ _('My courses') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-th-list"></i></a></li>
             {% else %}
-                <li class="breadcrumb-item"><a href="{{ get_homepath() }}/courselist" title="{{ _('Course list') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-graduation-cap"></i></a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('courselistpage') }}" title="{{ _('Course list') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-th-list"></i></a></li>
             {% endif %}
-            <li class="breadcrumb-item"><a href="{{ get_homepath() }}/course/{{ course.get_id() }}">{{ course.get_name(user_manager.session_language()) }}</a></li>
-            <li class="breadcrumb-item active"><a href="#">{{ task.get_name(user_manager.session_language()) }} <span class="sr-only">{{ _("(current)") }}</span></a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('coursepage', courseid=course.get_id()) }}">{{ course.get_name(session.language) }}</a></li>
+            <li class="breadcrumb-item active"><a href="#">{{ task.get_name(session.language) }} <span class="sr-only">{{ _("(current)") }}</span></a></li>
         </ol>
     </nav>
 {% endblock %}
@@ -271,19 +269,19 @@
 {% block content %}
 <h2>
     <div class="row">
-    <div class="col-md-10">{{ task.get_name(user_manager.session_language()) }}</div>
+    <div class="col-md-10">{{ task.get_name(session.language) }}</div>
     <div class="col-md-2">
-        {% if not is_lti() %}
+        {% if not session.is_lti %}
             <div class="pull-right">
                 <div class="btn-group">
                     <button type="button" id="load_loc" class="btn btn-info mr-1" onclick="load_from_storage('{{course.get_id()}}','{{task.get_id()}}')" title="{{ _('Load my work from memory') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-arrow-circle-o-down"></i></button>
                     <button type="button" id="save_loc" class="btn btn-info mr-1" onclick="save_to_storage('{{course.get_id()}}','{{task.get_id()}}')" title="{{ _('Save my work in memory') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-save"></i></button>
                     <button type="button" class="btn btn-info mr-1" data-toggle="collapse" data-target="#task_context">{{ _("Collapse context") }}</button>
                     {% if previous_taskid %}
-                        <a class="btn-sm btn btn-info" href="{{get_homepath()}}/course/{{course.get_id()}}/{{previous_taskid}}" title="{{ _('Previous task') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-arrow-left"></i></a>
+                        <a class="btn-sm btn btn-info" href="{{url_for('taskpage', courseid=course.get_id(), taskid=previous_taskid)}}" title="{{ _('Previous task') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-arrow-left"></i></a>
                     {% endif %}
                     {% if next_taskid %}
-                        <a class="btn-sm btn btn-info" href="{{get_homepath()}}/course/{{course.get_id()}}/{{next_taskid}}" title="{{ _('Next task') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-arrow-right"></i></a>
+                        <a class="btn-sm btn btn-info" href="{{url_for('taskpage', courseid=course.get_id(), taskid=next_taskid)}}" title="{{ _('Next task') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-arrow-right"></i></a>
                     {% endif %}
                 </div>
             </div>
@@ -296,21 +294,21 @@
 {# variable "input" has to be accessible to the eventual javascript present in the context of the task. #}
 <script>    
     var input = {
-        "@lang": "{{ user_manager.session_language() }}",
-        "@username": "{{ user_manager.session_username() }}",
+        "@lang": "{{ session.language }}",
+        "@username": "{{ session.username }}",
         "@random": {{ input_random_list }},
-        "@state": "{{ user_task.get('state', '') if registered else '' }}"
+        "@state": "{{ user_task.state if registered else '' }}"
     }
 </script>
 <div id="task_context" class="collapse show">
-    {{ task.get_context(user_manager.session_language()) | safe }}
+    {{ task.get_context(session.language) | safe }}
 </div>
 <hr/>
 <div id="task_alert"></div>
 <div id="ssh_template" style="display:none;">
-    {% if webterm_link %}
+    {% if config.WEBTERM %}
         <div id="webterm">
-            <input type="hidden" value="{{webterm_link}}" id="webterm_link"/>
+            <input type="hidden" value="{{ config.WEBTERM }}" id="webterm_link"/>
         </div>
         {{ _("Alternatively, you can also paste this command into your terminal:") }}<br/>
     {% else %}
@@ -348,15 +346,15 @@
     </div>
 {% endif %}
 
-{% if is_lti() %}
-    {% set action = "/lti/task" %}
+{% if session.is_lti %}
+    {% set path = url_for("ltitaskpage") %}
 {% else %}
-    {% set action = "/course/" + course.get_id() + "/" + task.get_id() %}
+    {% set path = url_for("taskpage", courseid=course.get_id(), taskid=task.get_id()) %}
 {% endif %}
 
-<form id="task" action="{{ get_homepath() ~ action }}" method="post" enctype="multipart/form-data"
+<form id="task" action="{{ path }}" method="post" enctype="multipart/form-data"
     {% for submission in submissions if submission["status"] == "waiting" %}
-        data-wait-submission="{{submission['_id']}}"
+        data-wait-submission="{{submission.id}}"
     {% endfor %}
 >
     {# Hide input random in form #}
@@ -366,25 +364,25 @@
     <input type="hidden" name="@action" value="submit"/>
     {% for problem in task.get_problems() %}
         <div class="problem card card-default mb-4">
-            {% if task.get_problems()|length != 1 or problem.get_name(user_manager.session_language()) != "" %}
+            {% if task.get_problems()|length != 1 or problem.get_name(session.language) != "" %}
                 <div class="card-heading">
                     <h5 class="card-header">
                         {% if task.get_problems()|length != 1 %}
                             {{ _("Question {}").format(loop.index) }}:
                         {% endif %}
-                        {{ problem.get_name(user_manager.session_language()) }}
+                        {{ problem.get_name(session.language) }}
                     </h5>
 
                 </div>
             {% endif %}
             <div class="card-body">
-                {{ problem.show_input(template_helper, user_manager.session_language(), user_manager.session_username()) | safe }}
+                {{ problem.show_input(session.language, session.username) | safe }}
             </div>
         </div>
     {% endfor %}
     {# no need to check with lti=True/False here as it was already checked by the calling python script. #}
-    {% set groups_ok = user_manager.task_can_user_submit(course, task, user_manager.session_username(), 'groups') %}
-    {% set tokens_ok = user_manager.task_can_user_submit(course, task, user_manager.session_username(), 'tokens') %}
+    {% set groups_ok = user_manager.task_can_user_submit(course, task, session.username, 'groups') %}
+    {% set tokens_ok = user_manager.task_can_user_submit(course, task, session.username, 'tokens') %}
 
     {% if not registered %}
         <button type="submit" class="btn btn-secondary btn-lg btn-block center-block" disabled="disabled">{{ _("Please enroll in the course to submit.") }}</button>
@@ -405,7 +403,7 @@
         {% else %}
             <button type="submit" class="btn btn-secondary btn-lg btn-block center-block" id="task-submit">{{ _("Submit") }}</button>
         {% endif %}
-    {% elif not task_dispenser.get_accessibility(task.get_id(), user_manager.session_username()).is_open() %}
+    {% elif not task_dispenser.get_accessibility(task.get_id(), session.username).is_open() %}
         <button type="submit" class="btn btn-secondary btn-lg btn-block center-block" disabled="disabled">{{ _("The deadline is over, you cannot submit anymore") }}</button>
     {% elif task_dispenser.get_group_submission(task.get_id()) and not groups_ok %}
         <button class="btn btn-secondary btn-lg btn-block center-block" disabled="disabled">{{ _('Please register in a group') }}</button>
@@ -436,8 +434,8 @@
     });
 
     var input = {
-        "@lang": "{{ user_manager.session_language() }}",
-        "@username": "{{ user_manager.session_username() }}",
+        "@lang": "{{ session.language }}",
+        "@username": "{{ session.username }}",
         "@random": {{ input_random_list }}
     }
 </script>

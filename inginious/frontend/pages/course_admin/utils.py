@@ -11,12 +11,14 @@ import io
 from collections import OrderedDict
 from datetime import datetime
 
-from flask import redirect, Response
+from flask import  session, redirect, Response, url_for
 from werkzeug.exceptions import Forbidden
 from bson.objectid import ObjectId
 
 from inginious.common.base import id_checker
+from inginious.frontend.courses import Course
 from inginious.frontend.pages.utils import INGIniousAuthPage
+from inginious.frontend.models import UserTask, Audience
 
 
 class INGIniousAdminPage(INGIniousAuthPage):
@@ -24,18 +26,23 @@ class INGIniousAdminPage(INGIniousAuthPage):
     An improved version of INGIniousAuthPage that checks rights for the administration
     """
 
-    def get_course_and_check_rights(self, courseid, taskid=None):
+    def get_course_and_check_rights(self, courseid, taskid=None, allow_all_staff=True):
         """ Returns the course with id ``courseid`` and the task with id ``taskid``, and verify the rights of the user.
             Raise app.forbidden() when there is no such course of if the users has not enough rights.
             :param courseid: the course on which to check rights
             :param taskid: If not None, returns also the task with id ``taskid``
+            :param allow_all_staff: allow admins AND tutors to see the page. If false, all only admins.
             :returns (Course, Task)
         """
 
         try:
-            course = self.course_factory.get_course(courseid)
-            if not self.user_manager.has_admin_rights_on_course(course):
-                raise Forbidden(description=_("You don't have admin rights on this course."))
+            course = Course.get(courseid)
+            if allow_all_staff:
+                if not self.user_manager.has_staff_rights_on_course(course):
+                    raise Forbidden(description=_("You don't have staff rights on this course."))
+            else:
+                if not self.user_manager.has_admin_rights_on_course(course):
+                    raise Forbidden(description=_("You don't have admin rights on this course."))
 
             if taskid is None:
                 return course, None
@@ -53,13 +60,13 @@ class INGIniousSubmissionsAdminPage(INGIniousAdminPage):
     def get_course_params(self, course, params):
         users = self.get_users(course)
         audiences = self.user_manager.get_course_audiences(course)
-        tasks = course.get_tasks(True)
+        tasks = course.get_task_dispenser().get_ordered_tasks()
 
-        tutored_audiences = [str(audience["_id"]) for audience in audiences if
-                             self.user_manager.session_username() in audience["tutors"]]
+        tutored_audiences = [str(audience["id"]) for audience in audiences if
+                             session.username in audience["tutors"]]
         tutored_users = []
         for audience in audiences:
-            if self.user_manager.session_username() in audience["tutors"]:
+            if session.username in audience["tutors"]:
                 tutored_users += audience["students"]
 
         limit = params.get("limit", 50) if params.get("limit", 50) > 0 else 50
@@ -87,7 +94,7 @@ class INGIniousSubmissionsAdminPage(INGIniousAdminPage):
         # Sanitise audiences
         if len(user_input.get("audiences", [])) == 1 and "," in user_input["audiences"][0]:
             user_input["audiences"] = user_input["audiences"][0].split(',')
-        user_input["audiences"] = [audience for audience in user_input["audiences"] if any(str(a["_id"]) == audience for a in audiences)]
+        user_input["audiences"] = [audience for audience in user_input["audiences"] if any(str(a["id"]) == audience for a in audiences)]
 
         # Sanitise tasks
         if not user_input.get("tasks", []):
@@ -176,7 +183,7 @@ class INGIniousSubmissionsAdminPage(INGIniousAdminPage):
         # Tasks (with categories)
         if only_tasks and not only_tasks_with_categories:
             self._validate_list(only_tasks)
-            base_filter["taskid"] = {"$in": only_tasks}
+            base_filter["taskid__in"] = only_tasks
         elif only_tasks_with_categories:
             only_tasks_with_categories = set(only_tasks_with_categories)
             more_tasks = {taskid for taskid, task in course.get_tasks().items() if
@@ -184,57 +191,50 @@ class INGIniousSubmissionsAdminPage(INGIniousAdminPage):
             if only_tasks:
                 self._validate_list(only_tasks)
                 more_tasks.intersection_update(only_tasks)
-            base_filter["taskid"] = {"$in": list(more_tasks)}
+            base_filter["taskid__in"] = list(more_tasks)
 
         # Users/audiences
         if only_users and not only_audiences:
             self._validate_list(only_users)
-            base_filter["username"] = {"$in": only_users}
+            base_filter["username__in"] = only_users
         elif only_audiences:
             list_audience_id = [ObjectId(o) for o in only_audiences]
             students = set()
-            for audience in self.database.audiences.find({"_id": {"$in": list_audience_id}}):
+            for audience in Audience.objects(id__in=list_audience_id):
                 students.update(audience["students"])
             if only_users:  # do the intersection
                 self._validate_list(only_users)
                 students.intersection_update(only_users)
-            base_filter["username"] = {"$in": list(students)}
+            base_filter["username__in"] = list(students)
 
         # Tags
         for tag_id, should_be_present in with_tags or []:
             if id_checker(tag_id):
-                filter["tests." + tag_id] = {"$in": [None, False]} if not should_be_present else True
+                filter["tests." + tag_id + "__in"] = [None, False] if not should_be_present else [True]
 
         # Grades
         if grade_between and grade_between[0] is not None:
-            filter.setdefault("grade", {})["$gte"] = float(grade_between[0])
+            filter["grade__gte"] = float(grade_between[0])
         if grade_between and grade_between[1] is not None:
-            filter.setdefault("grade", {})["$lte"] = float(grade_between[1])
+            filter["grade__lte"] = float(grade_between[1])
 
         # Submit time
-        try:
-            if submit_time_between and submit_time_between[0] is not None:
-                filter.setdefault("submitted_on", {})["$gte"] = datetime.strptime(submit_time_between[0],
-                                                                                  "%Y-%m-%d %H:%M:%S")
-            if submit_time_between and submit_time_between[1] is not None:
-                filter.setdefault("submitted_on", {})["$lte"] = datetime.strptime(submit_time_between[1],
-                                                                                  "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            # TODO it would be nice to display this in the interface. However, this should never happen because
-            # we have a nice JS interface that prevents this.
-            pass
+        if submit_time_between and submit_time_between[0] is not None:
+            filter["submitted_on__gte"] = datetime.fromisoformat(submit_time_between[0])
+        if submit_time_between and submit_time_between[1] is not None:
+            filter["submitted_on__lte"] = datetime.fromisoformat(submit_time_between[1])
 
         # Only crashed or timed-out submissions
         if keep_only_crashes:
-            filter["result"] = {"$in": ["crash", "timeout"]}
+            filter["result__in"] = ["crash", "timeout"]
 
         # Only evaluation submissions
-        user_tasks = self.database.user_tasks.find(base_filter)
+        user_tasks = UserTask.objects(**base_filter)
         best_submissions_list = {user_task['submissionid'] for user_task in user_tasks if
                                  user_task['submissionid'] is not None}
 
         if keep_only_evaluation_submissions is True:
-            filter["_id"] = {"$in": list(best_submissions_list)}
+            filter["id__in"] = list(best_submissions_list)
 
         filter.update(base_filter)
 
@@ -331,37 +331,16 @@ def make_csv(data):
     return response
 
 
-def get_menu(course, current, renderer, plugin_manager, user_manager):
-    """ Returns the HTML of the menu used in the administration. ```current``` is the current page of section """
-    default_entries = []
-    if user_manager.has_admin_rights_on_course(course):
-        default_entries += [("settings", "<i class='fa fa-cog fa-fw'></i>&nbsp; " + _("Course settings"))]
-
-    default_entries += [("stats", "<i class='fa fa-area-chart fa-fw'></i>&nbsp; " + _("Statistics")),
-                        ("students", "<i class='fa fa-user fa-fw'></i>&nbsp; " + _("User management"))]
-
-    if user_manager.has_admin_rights_on_course(course):
-        default_entries += [("tasks", "<i class='fa fa-tasks fa-fw'></i>&nbsp; " + _("Tasks"))]
-
-    default_entries += [("submissions", "<i class='fa fa-file-code-o fa-fw'></i>&nbsp; " + _("Submissions"))]
-
-    if user_manager.has_admin_rights_on_course(course):
-        default_entries += [("danger", "<i class='fa fa-bomb fa-fw'></i>&nbsp; " + _("Danger zone"))]
-
-    # Hook should return a tuple (link,name) where link is the relative link from the index of the course administration.
-    additional_entries = [entry for entry in plugin_manager.call_hook('course_admin_menu', course=course) if entry is not None]
-
-    return renderer("course_admin/menu.html", course=course,
-                    entries=default_entries + additional_entries, current=current)
-
-
 class CourseRedirectPage(INGIniousAdminPage):
     """ Redirect admins to /settings and tutors to /task """
 
     def GET_AUTH(self, courseid):  # pylint: disable=arguments-differ
         """ GET request """
         course, __ = self.get_course_and_check_rights(courseid)
-        return redirect(self.app.get_homepath() + '/admin/{}/settings'.format(courseid))
+        if session.username in course.get_tutors():
+            return redirect(url_for("coursetasklistpage", courseid=courseid))
+        else:
+            return redirect(url_for("coursesettingspage", courseid=courseid))
 
     def POST_AUTH(self, courseid):  # pylint: disable=arguments-differ
         """ POST request """

@@ -4,18 +4,17 @@
 {% extends "layout.html" %}
 {% set task_dispenser = course.get_task_dispenser() %}
 
-{% block title %} {{course.get_name(user_manager.session_language())}} {% endblock %}
+{% block title %} {{course.get_name(session.language)}} {% endblock %}
 
 {% block column %}
-    {{ template_helper.call('course_admin_menu',course=course,current='tasks') | safe }}
+    {% with current='tasks' %}{% include 'course_admin/menu.html' %}{% endwith %}
 {% endblock %}
 
 {% block navbar %}
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{ get_homepath() }}/mycourses" title="{{ _('My courses') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-graduation-cap"></i></a></li>
-            <li class="breadcrumb-item"><a href="{{ get_homepath() }}/course/{{course.get_id()}}">{{ course.get_name(user_manager.session_language()) }}</a></li>
-            <li class="breadcrumb-item"><a href="{{ get_homepath() }}/admin/{{course.get_id()}}" title="{{ _('Administration') }}" data-toggle="tooltip" data-placement="bottom">
+            <li class="breadcrumb-item"><a href="{{ url_for('coursepage', courseid=course.get_id()) }}">{{ course.get_name(session.language) }}</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('courseredirect', courseid=course.get_id()) }}" title="{{ _('Administration') }}" data-toggle="tooltip" data-placement="bottom">
                 <i class="fa fa-user-secret"></i></a></li>
             <li class="breadcrumb-item active"><a href="#"><i class="fa fa-tasks"></i> {{ _("Tasks") }} <span class="sr-only">{{ _("(current)") }}</span></a></li>
         </ol>
@@ -49,7 +48,7 @@
                     <label>{{ _("New task dispenser:") }}</label>
                     <select class="form-control" id="new_task_dispenser" name="task_dispenser">
                         {% for id, task_dispenser_class in task_dispensers.items() %}
-                            <option value="{{id}}" {{ 'selected' if task_dispenser_class.get_id() == task_dispenser.get_id() else '' }}>{{ task_dispenser_class.get_name(user_manager.session_language()) }}</option>
+                            <option value="{{id}}" {{ 'selected' if task_dispenser_class.get_id() == task_dispenser.get_id() else '' }}>{{ task_dispenser_class.get_name(session.language) }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -61,6 +60,29 @@
         </form>
     </div>
 </div>
+
+{% if config.WEBDAV_HOST %}
+    <div class="mb-3 mt-3" id="webdav_accord" role="tablist" aria-multiselectable="true">
+        <div class="card border-info">
+            <div class="card-header bg-info text-white" id="webdav_head">
+                <div style="cursor: pointer" data-toggle="collapse" data-parent="#webdav_accord" href="#webdav" aria-expanded="false" aria-controls="webdav">
+                    <i class="fa fa-fw fa-chevron-right"></i>{{_("WebDAV access")}}
+                </div>
+            </div>
+            <div id="webdav" class="collapse" role="tabpanel" aria-labelledby="webdav_head">
+                <div class="card-body">
+                    {{_("Use this URL to access your course folder using WebDAV:")}}<br/>
+                <br/>
+                <table class="table">
+                    <tr><td>{{_("URL")}}</td><td><code>{{ config.WEBDAV_HOST ~ "/" ~ course.get_id()}}</code></td></tr>
+                    <tr><td>{{_("Username")}}</td><td><code>{{  session.username  }}</code></td></tr>
+                    <tr><td>{{_("Password")}}</td><td><code>{{ user_manager.get_user_api_key(session.username) }}</code></td></tr>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
 
 {% if errors %}
     {% for error in errors %}
@@ -82,16 +104,16 @@
         <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
         <div class="row">
             <div class="col-md-10 mt-1">
-                {{ _("This course currently includes legacy tasks with importable data to the task dispenser settings. The taskset owner can clean the task files.") }}
+                {{ _("This course currently includes legacy tasks with settings that have to be imported to the task dispenser settings to be effective.") }}
             </div>
-            <div class="col-md-2"><button type="submit" name="migrate_tasks" class="btn btn-sm btn-block btn-danger"><i class="fa fa-rocket"></i> {{ _("Import settings") }}</button></div>
+            <div class="col-md-2"><button type="submit" name="migrate_tasks" class="btn btn-sm btn-block btn-danger"><i class="fa fa-rocket"></i> {{ _("Migrate tasks") }}</button></div>
         </div>
     </form>
 </div>
 {% endif %}
 
 <div id="dispenser_data">
-    {{ task_dispenser.render_edit(template_helper, course, tasks, tasks_errors) | safe }}
+    {{ task_dispenser.render_edit(course, tasks, tasks_errors) | safe }}
 </div>
 
 <div class="row mt-3">

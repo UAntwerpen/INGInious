@@ -6,19 +6,20 @@
 """ Submissions """
 
 import base64
-import gettext
 import flask
 
+from flask import current_app, session
+from inginious.frontend.courses import Course
 from inginious.frontend.pages.api._api_page import APIAuthenticatedPage, APINotFound, APIForbidden, APIInvalidArguments, APIError
 
 
-def _get_submissions(course_factory, submission_manager, user_manager, translations, courseid, taskid, with_input, submissionid=None):
+def _get_submissions(submission_manager, user_manager, courseid, taskid, with_input, submissionid=None):
     """
         Helper for the GET methods of the two following classes
     """
 
     try:
-        course = course_factory.get_course(courseid)
+        course = Course.get(courseid)
     except:
         raise APINotFound("Course not found")
 
@@ -45,12 +46,11 @@ def _get_submissions(course_factory, submission_manager, user_manager, translati
     for submission in submissions:
         submission = submission_manager.get_feedback_from_submission(
             submission,
-            show_everything=user_manager.has_admin_rights_on_course(course, user_manager.session_username()),
-            translation=translations.get(user_manager.session_language(), gettext.NullTranslations())
+            show_everything=user_manager.has_staff_rights_on_course(course, session.username)
         )
         data = {
-            "id": str(submission["_id"]),
-            "submitted_on": str(submission["submitted_on"]),
+            "id": str(submission["id"]),
+            "submitted_on": submission["submitted_on"].isoformat(),
             "status": submission["status"]
         }
 
@@ -111,7 +111,7 @@ class APISubmissionSingle(APIAuthenticatedPage):
         """
         with_input = "input" in flask.request.args
 
-        return _get_submissions(self.taskset_factory, self.submission_manager, self.user_manager, self.app.l10n_manager.translations, courseid, taskid, with_input, submissionid)
+        return _get_submissions(self.submission_manager, self.user_manager, courseid, taskid, with_input, submissionid)
 
 
 class APISubmissions(APIAuthenticatedPage):
@@ -152,7 +152,7 @@ class APISubmissions(APIAuthenticatedPage):
         """
         with_input = "input" in flask.request.args
 
-        return _get_submissions(self.taskset_factory, self.submission_manager, self.user_manager, self.app.l10n_manager.translations, courseid, taskid, with_input)
+        return _get_submissions(self.submission_manager, self.user_manager, courseid, taskid, with_input)
 
     def API_POST(self, courseid, taskid):  # pylint: disable=arguments-differ
         """
@@ -168,11 +168,11 @@ class APISubmissions(APIAuthenticatedPage):
         """
 
         try:
-            course = self.course_factory.get_course(courseid)
+            course = Course.get(courseid)
         except:
             raise APINotFound("Course not found")
 
-        username = self.user_manager.session_username()
+        username = session.username
 
         if not self.user_manager.course_is_open_to_user(course, username, False):
             raise APIForbidden("You are not registered to this course")
@@ -200,7 +200,8 @@ class APISubmissions(APIAuthenticatedPage):
 
         user_input = task.adapt_input_for_backend(user_input)
 
-        if not task.input_is_consistent(user_input, self.default_allowed_file_extensions, self.default_max_file_size):
+        if not task.input_is_consistent(user_input, current_app.config('ALLOWED_FILE_EXTENSIONS'),
+                                        current_app.config.get('MAX_FILE_SIZE')):
             raise APIInvalidArguments()
 
         # Get debug info if the current user is an admin

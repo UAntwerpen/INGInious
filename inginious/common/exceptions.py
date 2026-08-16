@@ -5,8 +5,18 @@
 
 """ Some type of exceptions used by parts of INGInious """
 
+class NotLoadedException(Exception):
+    pass
+
 
 class InvalidNameException(Exception):
+    pass
+
+
+class CourseNotFoundException(Exception):
+    pass
+
+class CourseNotArchivable(Exception):
     pass
 
 
@@ -14,9 +24,15 @@ class TaskNotFoundException(Exception):
     pass
 
 
-class TaskAlreadyExistsException(Exception):
+class CourseUnreadableException(Exception):
     pass
 
+
+class CourseAlreadyExistsException(Exception):
+    pass
+
+class TaskAlreadyExistsException(Exception):
+    pass
 
 class TaskUnreadableException(Exception):
     pass
@@ -24,3 +40,8 @@ class TaskUnreadableException(Exception):
 
 class TaskReaderNotFoundException(Exception):
     pass
+
+
+class ImportCourseException(Exception):
+    pass
+

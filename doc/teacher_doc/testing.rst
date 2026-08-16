@@ -27,3 +27,24 @@ on the *>_* (left-chevron, underscore) button next to the *Submit* button. Accor
 configuration, either a SSH command-line with auto-generated password will be given you (you will,
 in this case, need an SSH client installed), or an embedded SSH console will pop up as the
 feedback position.
+
+Debugging IPython scripts (run.py)
+``````````````````````````````````
+As mentioned in :ref:`run_file`, INGInious uses IPython and is configured to expose a few
+functions such as ``get_input`` or ``set_feedback``. Therefore, you can't directly use the ``python``
+interpreter but must use `inginious-ipython`, for instance ``inginious-ipython run.py``.
+
+Debugging bash scripts (run.sh)
+````````````````````````````````
+As opposed to python scripts, INGInious functions are exposed through the
+environment so there is no need to use a particular loader. ``source run.sh`` might be a better
+choice than running the script in a subshell to observe the state of variables after execution.
+
+Container debugging through an IDE
+------------------------------
+INGInious also supports container debugging through an IDE. This is currently only supported for the INGInious
+script and other scripts/APIs in the container by using Pycharm's debugging. You need to create a *Python Debug Server*
+in Pycharm Run/Debug configurations, listening on port 5678, and add one or several *Path Mapping* between the local 
+and remote files to enable checkpoints.
+To enable this feature, you need to start the agent with the ``--debugger`` option or start the webapp with the
+``debugger`` config in your configuration.yaml.

@@ -3,13 +3,13 @@
 
 {% extends "layout.html" %}
 
-{% block title %} {{course.get_name(user_manager.session_language())}} - {{scoreboard_name}} {% endblock %}
+{% block title %} {{course.get_name(session.language)}} - {{scoreboard_name}} {% endblock %}
 
 {% block navbar %}
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{get_homepath()}}/course/{{course.get_id()}}">{{course.get_name(user_manager.session_language())}}</a></li>
-            <li class="breadcrumb-item"><a href="{{get_homepath()}}/scoreboard/{{course.get_id()}}"><i class="fa fa-trophy"></i></a></li>
+            <li class="breadcrumb-item"><a href="{{url_for('coursepage', courseid=course.get_id())}}">{{course.get_name(session.language)}}</a></li>
+            <li class="breadcrumb-item"><a href="{{url_for('scoreboardcourse', courseid=course.get_id())}}"><i class="fa fa-trophy"></i></a></li>
             <li class="breadcrumb-item active"><a href="#">{{scoreboard_name}} <span class="sr-only">(current)</span></a></li>
         </ol>
     </nav>

@@ -23,7 +23,6 @@ from inginious.agent.docker_agent._docker_runtime import DockerRuntime
 from inginious.agent.docker_agent._timeout_watcher import TimeoutWatcher
 from inginious.common.asyncio_utils import AsyncIteratorWrapper, AsyncProxy
 from inginious.common.base import id_checker, id_checker_tests
-from inginious.common.filesystems import FileSystemProvider
 from inginious.common.messages import BackendNewJob, BackendKillJob
 
 
@@ -45,7 +44,7 @@ class DockerRunningJob:
     sockets_path: str
     student_path: str
     systemfiles_path: str
-    taskset_common_student_path: str
+    course_common_student_path: str
     run_cmd: str
     assigned_external_ports: List[int]
     student_containers: Set[str]  # container ids of student containers
@@ -64,14 +63,13 @@ class DockerRunningStudentContainer:
 
 
 class DockerAgent(Agent):
-    def __init__(self, context, backend_addr, friendly_name, concurrency, tasks_fs: FileSystemProvider,
-                 address_host=None, external_ports=None, tmp_dir="./agent_tmp", runtimes=None, ssh_allowed=False):
+    def __init__(self, context, backend_addr, friendly_name, concurrency,
+                 address_host=None, external_ports=None, debugger=False, tmp_dir="./agent_tmp", runtimes=None, ssh_allowed=False):
         """
         :param context: ZeroMQ context for this process
         :param backend_addr: address of the backend (for example, "tcp://127.0.0.1:2222")
         :param friendly_name: a string containing a friendly name to identify agent
         :param concurrency: number of simultaneous jobs that can be run by this agent
-        :param tasks_fs: FileSystemProvider for the taskset / tasks
         :param address_host: hostname/ip/... to which external client should connect to access to the docker
         :param external_ports: iterable containing ports to which the docker instance can bind internal ports
         :param tmp_dir: temp dir that is used by the agent to start new containers
@@ -79,7 +77,7 @@ class DockerAgent(Agent):
         :param runtime: runtime used by docker (the defaults are "runc" with docker or "kata-runtime" with kata)
         :param ssh_allowed: boolean to make this agent accept tasks with ssh or not
         """
-        super(DockerAgent, self).__init__(context, backend_addr, friendly_name, concurrency, tasks_fs)
+        super(DockerAgent, self).__init__(context, backend_addr, friendly_name, concurrency)
 
         self._runtimes = {x.envtype: x for x in runtimes} if runtimes is not None else None
 
@@ -96,12 +94,19 @@ class DockerAgent(Agent):
         self._address_host = address_host
         self._external_ports = set(external_ports) if external_ports is not None else set()
 
+        # IDE debugging for grading containers
+        self._debugger = debugger
+
         # Async proxy to os
         self._aos = AsyncProxy(os)
         self._ashutil = AsyncProxy(shutil)
 
         # Does this agent allow ssh_student ?
         self._ssh_allowed = ssh_allowed
+
+        # Background tasks, stores async tasks we don't really care about but must not be
+        # garbage collected before completion.
+        self._background_tasks = set()
 
     async def _init_clean(self):
         """ Must be called when the agent is starting """
@@ -225,40 +230,56 @@ class DockerAgent(Agent):
         since = None  # last time we saw something. Useful if a restart happens...
         while not shutdown:
             try:
+                # Catch oom events with cgroups1 only, not to kill twice
+                event_filter = ["die", "oom"] if await self._docker.get_cgroup_version() == "1" else ["die"]
                 source = AsyncIteratorWrapper(
-                    self._docker.sync.event_stream(filters={"event": ["die", "oom"]}, since=since))
+                    self._docker.sync.event_stream(filters={"event": event_filter}, since=since))
                 self._logger.info("Docker event stream started")
-                async for i in source:
-                    since = i.get('time', since)  # update time if available.
+                async for event in source:
+                    try:
+                        since = event.get('time', since)  # update time if available.
 
-                    if i["Type"] == "container" and i["status"] == "die":
-                        container_id = i["id"]
-                        try:
-                            retval = int(i["Actor"]["Attributes"]["exitCode"])
-
-                        except asyncio.CancelledError:
-                            raise
-                        except:
-                            self._logger.exception("Cannot parse exitCode for container %s", container_id)
-                            retval = -1
-
-                        if container_id in self._containers_running:
-                            self._create_safe_task(self.handle_job_closing(container_id, retval))
-                        elif container_id in self._student_containers_running:
-                            self._create_safe_task(self.handle_student_job_closing(container_id, retval))
-                    elif i["Type"] == "container" and i["status"] == "oom":
-                        container_id = i["id"]
-                        if container_id in self._containers_running or container_id in self._student_containers_running:
-                            self._logger.info("Container %s did OOM, killing it", container_id)
-                            self._containers_killed[container_id] = "overflow"
+                        if event["Type"] == "container" and event["Action"] == "die":
+                            container_id = event["Actor"]["ID"]
                             try:
-                                self._create_safe_task(self._docker.kill_container(container_id))
+                                retval = int(event["Actor"]["Attributes"]["exitCode"])
                             except asyncio.CancelledError:
                                 raise
-                            except:  # this call can sometimes fail, and that is normal.
-                                pass
-                    else:
-                        raise TypeError(str(i))
+                            except:
+                                self._logger.exception("Cannot parse exitCode for container %s", container_id)
+                                retval = -1
+
+                            # Check if the container was killed due to OOM.
+                            oom_killed = await self._docker.was_oom_killed(container_id)
+                            if oom_killed and (container_id in self._containers_running or
+                                               container_id in self._student_containers_running):
+                                self._logger.info("Container %s did OOM and was killed.", container_id)
+                                self._containers_killed[container_id] = "overflow"
+
+                            if container_id in self._containers_running:
+                                self._create_safe_task(self.handle_job_closing(container_id, retval))
+                            elif container_id in self._student_containers_running:
+                                self._create_safe_task(self.handle_student_job_closing(container_id, retval))
+                        elif event["Type"] == "container" and event["Action"] == "oom":
+                            # On cgroups v1, the OOM killer is disabled to make sure the whole container is killed.
+                            container_id = event["Actor"]["ID"]
+                            if container_id in self._containers_running or container_id in self._student_containers_running:
+                                self._logger.info("Container %s did OOM, killing it", container_id)
+                                self._containers_killed[container_id] = "overflow"
+                                try:
+                                    self._create_safe_task(self._docker.kill_container(container_id))
+                                except asyncio.CancelledError:
+                                    raise
+                                except:  # this call can sometimes fail, and that is normal.
+                                    pass
+                        else:
+                            raise ValueError("Unknown docker event format")
+
+                    except asyncio.CancelledError:
+                        raise
+                    except:
+                        self._logger.exception("Docker event parsing failed: %s", str(event))
+
                 raise Exception(
                     "Docker stopped feeding the event stream. This should not happen. Restarting the event stream...")
             except asyncio.CancelledError:
@@ -273,7 +294,8 @@ class DockerAgent(Agent):
 
     def __new_job_sync(self, message: BackendNewJob, future_results):
         """ Synchronous part of _new_job. Creates needed directories, copy files, and starts the container. """
-        taskset_id = message.taskset_id
+
+        course_id = message.course_id
         task_id = message.task_id
 
         debug = message.debug
@@ -281,37 +303,45 @@ class DockerAgent(Agent):
         environment_name = message.environment
 
         try:
-            enable_network = message.environment_parameters.get("network_grading", False)
+            enable_network = message.environment_parameters.get("network_grading", False) or self._debugger
             limits = message.environment_parameters.get("limits", {})
             time_limit = int(limits.get("time", 30))
             hard_time_limit = int(limits.get("hard_time", None) or time_limit * 3)
             mem_limit = int(limits.get("memory", 200))
-            run_cmd = message.environment_parameters.get("run_cmd", '')
+            run_cmd = message.environment_parameters.get("run_cmd", None)
         except:
             raise CannotCreateJobException('The agent is unable to parse the parameters')
 
-        taskset_fs = self._fs.from_subfolder(taskset_id)
-        task_fs = taskset_fs.from_subfolder(task_id)
+        if course_id and task_id:
+            course_fs = self._fs.from_subfolder(course_id)
+            task_fs = course_fs.from_subfolder(task_id)
 
-        if not taskset_fs.exists() or not task_fs.exists():
-            self._logger.warning("Task %s/%s unavailable on this agent", taskset_id, task_id)
-            raise CannotCreateJobException(
-                'Task unavailable on agent. Please retry later, the agents should synchronize soon. '
-                'If the error persists, please contact the taskset administrator.')
+            if not course_fs.exists() or not task_fs.exists():
+                self._logger.warning("Task %s/%s unavailable on this agent", course_id, task_id)
+                raise CannotCreateJobException(
+                    'Task unavailable on agent. Please retry later, the agents should synchronize soon. '
+                    'If the error persists, please contact your course administrator.')
 
         # Check for realistic memory limit value
         if mem_limit < 20:
             mem_limit = 20
         elif mem_limit > self._max_memory_per_slot:
-            self._logger.warning("Task %s/%s ask for too much memory (%dMB)! Available: %dMB", taskset_id, task_id,
+            if course_id and task_id:
+                self._logger.warning("Task %s/%s asks for too much memory (%dMB)! Available: %dMB", course_id, task_id,
                                  mem_limit, self._max_memory_per_slot)
+            else:
+                self._logger.warning("A job asks for too much memory (%dMB)! Available: %dMB", mem_limit,
+                                     self._max_memory_per_slot)
             raise CannotCreateJobException(
-                'Not enough memory on agent (available: %dMB). Please contact the taskset administrator.' % self._max_memory_per_slot)
+                'Not enough memory on agent (available: %dMB). Please contact your course administrator.' % self._max_memory_per_slot)
 
         if environment_type not in self._containers or environment_name not in self._containers[environment_type]:
-            self._logger.warning("Task %s/%s ask for an unknown environment %s/%s", taskset_id, task_id,
+            if course_id and task_id:
+                self._logger.warning("Task %s/%s asks for an unknown environment %s/%s", course_id, task_id,
                                  environment_type, environment_name)
-            raise CannotCreateJobException('Unknown container. Please contact the taskset administrator.')
+            else:
+                self._logger.warning("A job asks for an unknown environment %s/%s", environment_type, environment_name)
+            raise CannotCreateJobException('Unknown container. Please contact your course administrator.')
 
         environment = self._containers[environment_type][environment_name]["id"]
         runtime = self._containers[environment_type][environment_name]["runtime"]
@@ -323,7 +353,7 @@ class DockerAgent(Agent):
             ports_needed.append(22)
 
         ports = {}
-        if len(ports_needed) > 0:  # if ssh_debug, put time limits to 30 min.
+        if len(ports_needed) > 0 or self._debugger:  # if ssh_debug or container debug, put time limits to 30 min.
             time_limit = 30 * 60
             hard_time_limit = 30 * 60
         for p in ports_needed:
@@ -342,46 +372,50 @@ class DockerAgent(Agent):
             raise CannotCreateJobException('Cannot make container temp directory.')
 
         task_path = path_join(container_path, 'task')  # tmp_dir/id/task/
-        taskset_path = path_join(container_path, 'course')
+        course_path = path_join(container_path, 'course')
 
         sockets_path = path_join(container_path, 'sockets')  # tmp_dir/id/socket/
         student_path = path_join(task_path, 'student')  # tmp_dir/id/task/student/
         systemfiles_path = path_join(task_path, 'systemfiles')  # tmp_dir/id/task/systemfiles/
 
-        taskset_common_path = path_join(taskset_path, 'common')
-        taskset_common_student_path = path_join(taskset_path, 'common', 'student')
+        course_common_path = path_join(course_path, 'common')
+        course_common_student_path = path_join(course_path, 'common', 'student')
 
         # Create the needed directories
         os.mkdir(sockets_path)
         os.chmod(container_path, 0o777)
         os.chmod(sockets_path, 0o777)
-        os.mkdir(taskset_path)
+        os.mkdir(course_path)
 
-        # TODO: avoid copy
-        task_fs.copy_from(None, task_path)
-        os.chmod(task_path, 0o777)
+        if course_id and task_id:
+            # TODO: avoid copy
+            task_fs.copy_from(None, task_path)
+            os.chmod(task_path, 0o777)
 
-        if not os.path.exists(student_path):
-            os.mkdir(student_path)
-            os.chmod(student_path, 0o777)
+            if not os.path.exists(student_path):
+                os.mkdir(student_path)
+                os.chmod(student_path, 0o777)
 
-        # Copy common and common/student if needed
-        # TODO: avoid copy
-        if taskset_fs.from_subfolder("$common").exists():
-            taskset_fs.from_subfolder("$common").copy_from(None, taskset_common_path)
+            # Copy common and common/student if needed
+            # TODO: avoid copy
+            if course_fs.from_subfolder("$common").exists():
+                course_fs.from_subfolder("$common").copy_from(None, course_common_path)
+            else:
+                os.mkdir(course_common_path)
+
+            if course_fs.from_subfolder("$common").from_subfolder("student").exists():
+                course_fs.from_subfolder("$common").from_subfolder("student").copy_from(None, course_common_student_path)
+            else:
+                os.mkdir(course_common_student_path)
         else:
-            os.mkdir(taskset_common_path)
-
-        if taskset_fs.from_subfolder("$common").from_subfolder("student").exists():
-            taskset_fs.from_subfolder("$common").from_subfolder("student").copy_from(None, taskset_common_student_path)
-        else:
-            os.mkdir(taskset_common_student_path)
+            os.mkdir(course_common_path)
+            os.mkdir(course_common_student_path)
 
         # Run the container
         try:
-            container_id = self._docker.sync.create_container(environment, enable_network, mem_limit, task_path,
-                                                              sockets_path, taskset_common_path,
-                                                              taskset_common_student_path,
+            container_id = self._docker.sync.create_container(environment, enable_network, self._debugger, mem_limit, task_path,
+                                                              sockets_path, course_common_path,
+                                                              course_common_student_path,
                                                               self.__get_fd_limit(), runtime,
                                                               ports)
         except Exception as e:
@@ -409,7 +443,7 @@ class DockerAgent(Agent):
             sockets_path=sockets_path,
             student_path=student_path,
             systemfiles_path=systemfiles_path,
-            taskset_common_student_path=taskset_common_student_path,
+            course_common_student_path=course_common_student_path,
             run_cmd=run_cmd,
             assigned_external_ports=list(ports.values()),
             student_containers=set(),
@@ -484,12 +518,12 @@ class DockerAgent(Agent):
                 ports[p] = self._external_ports.pop()
 
             try:
-                socket_path = path_join(parent_info.sockets_path, str(socket_id) + ".sock")
                 container_id = await self._docker.create_container_student(runtime, environment,
                                                                            memory_limit, parent_info.student_path,
-                                                                           socket_path,
+                                                                           parent_info.sockets_path,
+                                                                           socket_id,
                                                                            parent_info.systemfiles_path,
-                                                                           parent_info.taskset_common_student_path,
+                                                                           parent_info.course_common_student_path,
                                                                            parent_info.environment_type,
                                                                            self.__get_fd_limit(),
                                                                            parent_info.container_id if share_network else None,
@@ -542,7 +576,12 @@ class DockerAgent(Agent):
 
     async def read_stream(self, reader_stream, buffer):
         """Helper to read a read and put data on a buffer"""
-        msg_header = await reader_stream.readexactly(8)
+        msg_header = await reader_stream.read(8)
+        # Newer implementations feed EOL AFTER the last data block and not at the end of it.
+        # It can then only be detected by reading the next stream byte. This is retrocompatible.
+        if reader_stream.at_eof():
+            return buffer
+
         outtype, length = struct.unpack_from('>BxxxL',
                                              msg_header)  # format imposed by docker in the attach endpoint
         if length != 0:
@@ -636,7 +675,7 @@ class DockerAgent(Agent):
         """ Talk with a container. Sends the initial input. Allows to start student containers """
         sock = await self._docker.attach_to_container(info.container_id)
         try:
-            reader_stream, write_stream = await asyncio.open_connection(sock=sock.get_socket())
+            reader_stream, write_stream = await asyncio.open_connection(sock=sock._sock)
         except asyncio.CancelledError:
             raise
         except:
@@ -707,7 +746,7 @@ class DockerAgent(Agent):
                                 await self.start_ssh(student_containers_streams[msg["student_container_id"]][0],
                                                      info)  # If using ssh with kata: wait for ssh info and start ssh
                             else:  # classical run_student (not ssh_student) with a kata runtime -> handle student_container outputs
-                                self._loop.create_task(self._handle_student_container_outputs(
+                                self._start_background_task(self._handle_student_container_outputs(
                                     student_containers_streams[msg["student_container_id"]][0], write_stream))
 
                         elif msg["type"] in ["stdin", "student_signal"]:  # Simply transfer to student_container
@@ -746,14 +785,14 @@ class DockerAgent(Agent):
             self._logger.debug("Container output ended with an IncompleteReadError; It was probably killed.")
         except asyncio.CancelledError:
             write_stream.close()
-            sock.close_socket()
+            sock._sock.close()
             future_results.set_result(result)
             raise
         except:
             self._logger.exception("Exception while reading container %s output", info.container_id)
 
         write_stream.close()
-        sock.close_socket()
+        sock._sock.close()
         future_results.set_result(result)
 
         if not result:
@@ -761,8 +800,7 @@ class DockerAgent(Agent):
 
     async def open_student_stream(self, student_container_id):
         student_sock = await self._docker.attach_to_container(student_container_id)
-        student_reader_stream, student_write_stream = await asyncio.open_connection(
-            sock=student_sock.get_socket())
+        student_reader_stream, student_write_stream = await asyncio.open_connection(sock=student_sock._sock)
         stream = (student_reader_stream, student_write_stream)
         return stream
 
@@ -875,6 +913,9 @@ class DockerAgent(Agent):
                 # Get logs back
                 try:
                     return_value = await info.future_results
+
+                    if return_value is None:
+                        raise Exception("Grading container did not return any result.")
 
                     # Accepted types for return dict
                     accepted_types = {"stdout": str, "stderr": str, "result": str, "text": str, "grade": float,
@@ -1003,3 +1044,10 @@ class DockerAgent(Agent):
                                 "%s was detected as a runtime; it would duplicate another one, so we ignore it. %s",
                                 runtime, str(v))
         return retval
+
+    def _start_background_task(self, *args, **kwargs):
+        """ Starts a background task, using self._loop.create_task. This function follows the same signature.
+            Ensures that the task is being run and that it is not garbage collected before completion. """
+        task = self._loop.create_task(*args, **kwargs)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)

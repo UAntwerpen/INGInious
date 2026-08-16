@@ -14,7 +14,7 @@ from abc import ABCMeta, abstractmethod
 from inginious.common.base import id_checker
 
 
-def _get_problem_types(name: str, base_class) -> dict:
+def _inspect_problem_types(name: str, base_class) -> dict:
     """ Generic function to get a mapping of Problem names and their associated class by 
         inspecting a given module.
 
@@ -40,22 +40,24 @@ def _get_problem_types(name: str, base_class) -> dict:
     """ Return the mapping """
     return {member.get_type(): member for member in members}
 
-def get_problem_types(name: str) -> dict:
+def inspect_problem_types(name: str) -> dict:
     """ Get the mapping of Problem types available by inspecting a given module.
 
         :param  name:   The name of the module to inspect.
         :return:        The mapping of problem name and problem class.
     """
-    raw = _get_problem_types(name, Problem)
+    raw = _inspect_problem_types(name, Problem)
     return {pbl_name: pbl_cls for pbl_name, pbl_cls in raw.items() if pbl_name is not None}
 
-def get_default_problem_types() -> dict:
-    """ Get the mapping of default Problem types available by inspecting the current module.
+_problem_types = {}
 
-        :return:    The mapping of problem name and problem class.
-    """
-    return get_problem_types(__name__)
+def get_problem_types():
+    return _problem_types
 
+def register_problem_types(problem_types):
+    """ Register a problem type """
+    global _problem_types
+    _problem_types.update(problem_types)
 
 class Problem(object, metaclass=ABCMeta):
     """Basic problem """
@@ -142,7 +144,7 @@ class CodeProblem(Problem):
 
     def __init__(self, problemid, content, translations, taskfs):
         Problem.__init__(self, problemid, content, translations, taskfs)
-        self._header = content['header'] if "header" in content else ""
+        self._header = content.get("header", "") or ""
         self._optional = content.get("optional", False)
 
         if re.match(r'[a-z0-9\-_\.]+$', content.get("language", ""), re.IGNORECASE):
@@ -182,16 +184,18 @@ class CodeProblem(Problem):
     @classmethod
     def parse_problem(self, problem_content):
         # Checking problem edit inputs
-        if len(problem_content["offset"]) == 0:
-            del problem_content["offset"]
-        else:
-            try:
-                offset = int(problem_content["offset"])
-                if offset < 1:
-                    raise Exception("Line offset must be positive!")
-                problem_content["offset"] = offset
-            except ValueError:
-                raise Exception("Line offset must be an integer!")
+        if "offset" in problem_content:
+            # Remove if empty value
+            if not problem_content["offset"]:
+                del problem_content["offset"]
+            else: # Parse value
+                try:
+                    offset = int(problem_content["offset"])
+                    if offset < 1:
+                        raise Exception("Line offset must be positive!")
+                    problem_content["offset"] = offset
+                except ValueError:
+                    raise Exception("Line offset must be an integer!")
 
         return Problem.parse_problem(problem_content)
 
@@ -236,7 +240,7 @@ class FileProblem(Problem):
             if problem_content["allowed_exts"] == "":
                 del problem_content["allowed_exts"]
             else:
-                problem_content["allowed_exts"] = problem_content["allowed_exts"].split(',')
+                problem_content["allowed_exts"] = [extension.strip() for extension in problem_content["allowed_exts"].split(',')]
 
         if "max_size" in problem_content:
             try:

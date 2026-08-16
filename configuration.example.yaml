@@ -19,6 +19,7 @@ local-config:
     # debug_host: localhost  # host that will be indicated to users when they want to use the task remote debug feature. Automatically guessed by
                              # default
     debug_ports: 64000-64100 #port range use for remote debug feature
+    debugger: true # for IDE debugging, uses port 5678
 
 # MongoDB options
 mongo_opt:
@@ -34,9 +35,6 @@ use_minified_js: true
 # URL of a node app INGInious-xterm, properly configured, that allows to run in-browser ssh debug
 # If you don't want to install/activate it, just set it to None or remove it from the file
 webterm: "https://my-host.be:8080"
-
-# Location of the backup directory (webapp)
-backup_directory: ./inginious/backup
 
 # Plugins that will be loaded by the webapp
 plugins:

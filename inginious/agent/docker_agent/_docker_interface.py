@@ -7,7 +7,7 @@
     (not asyncio) Interface to Docker
 """
 import os
-from datetime import datetime
+import random
 from typing import List, Tuple, Dict
 
 import docker
@@ -17,7 +17,7 @@ from docker.types import Ulimit
 
 from inginious.agent.docker_agent._docker_runtime import DockerRuntime
 
-DOCKER_AGENT_VERSION = 3
+DOCKER_AGENT_VERSION = 4
 
 
 class DockerInterface(object):  # pragma: no cover
@@ -30,6 +30,12 @@ class DockerInterface(object):  # pragma: no cover
     @property
     def _docker(self):
         return docker.from_env()
+
+    def get_cgroup_version(self) -> str:
+        """
+        :return: the cgroup version, that is, "1" or "2".
+        """
+        return self._docker.info().get("CgroupVersion")
     
     def get_containers(self, runtimes: List[DockerRuntime]) -> Dict[str, Dict[str, Dict[str, str]]]:
         """
@@ -79,7 +85,8 @@ class DockerInterface(object):  # pragma: no cover
                         "title": title,
                         "created": created,
                         "ports": ports,
-                        "runtime": docker_runtime.runtime
+                        "runtime": docker_runtime.runtime,
+                        "advertised": x.labels.get("org.inginious.grading.advertise", "true") == "true"
                     }
             except:
                 logging.getLogger("inginious.agent").exception("Container %s is badly formatted", title or "[cannot load title]")
@@ -93,13 +100,13 @@ class DockerInterface(object):  # pragma: no cover
                     latest[envtype][img_c["title"]] = {"id": img_id, **img_c}
         return latest
 
-    def get_host_ip(self, env_with_dig='ingi/inginious-c-default'):
+    def get_host_ip(self, image):
         """
         Get the external IP of the host of the docker daemon. Uses OpenDNS internally.
-        :param env_with_dig: any container image that has dig
+        :param image: any container image that has curl
         """
         try:
-            container = self._docker.containers.create(env_with_dig, command="dig +short myip.opendns.com @resolver1.opendns.com")
+            container = self._docker.containers.create(image, command="curl -s https://icanhazip.com")
             container.start()
             response = container.wait()
             assert response["StatusCode"] == 0 if isinstance(response, dict) else response == 0
@@ -109,8 +116,8 @@ class DockerInterface(object):  # pragma: no cover
         except:
             return None
 
-    def create_container(self, image, network_grading, mem_limit, task_path, sockets_path,
-                         taskset_common_path, taskset_common_student_path, fd_limit, runtime: str, ports=None):
+    def create_container(self, image, network_grading, debugger, mem_limit, task_path, sockets_path,
+                         course_common_path, course_common_student_path, fd_limit, runtime: str, ports=None):
         """
         Creates a container.
         :param image: env to start (name/id of a docker image)
@@ -118,8 +125,8 @@ class DockerInterface(object):  # pragma: no cover
         :param mem_limit: in Mo
         :param task_path: path to the task directory that will be mounted in the container
         :param sockets_path: path to the socket directory that will be mounted in the container
-        :param taskset_common_path:
-        :param taskset_common_student_path:
+        :param course_common_path:
+        :param course_common_student_path:
         :param fd_limit: Tuple with soft and hard limits per slot for FS
         :param runtime: name of the docker runtime to use
         :param ports: dictionary in the form {docker_port: external_port}
@@ -127,55 +134,62 @@ class DockerInterface(object):  # pragma: no cover
         """
         task_path = os.path.abspath(task_path)
         sockets_path = os.path.abspath(sockets_path)
-        taskset_common_path = os.path.abspath(taskset_common_path)
-        taskset_common_student_path = os.path.abspath(taskset_common_student_path)
+        course_common_path = os.path.abspath(course_common_path)
+        course_common_student_path = os.path.abspath(course_common_student_path)
         if ports is None:
             ports = {}
 
         nofile_limit = Ulimit(name='nofile', soft=fd_limit[0], hard=fd_limit[1])
+
+        cgroups1_params = {
+            "mem_swappiness": 0, "oom_kill_disable": True
+        } if self.get_cgroup_version() == "1" else {}
 
         response = self._docker.containers.create(
             image,
             stdin_open=True,
             mem_limit=str(mem_limit) + "M",
             memswap_limit=str(mem_limit) + "M",
-            mem_swappiness=0,
-            oom_kill_disable=True,
             network_mode=("bridge" if (network_grading or len(ports) > 0) else 'none'),
             ports=ports,
+            extra_hosts={"host.docker.internal": "host-gateway"},
+            environment={"DEBUGGER" : debugger},
             volumes={
-                task_path: {'bind': '/task'},
-                sockets_path: {'bind': '/sockets'},
-                taskset_common_path: {'bind': '/course/common', 'mode': 'ro'},
-                taskset_common_student_path: {'bind': '/course/common/student', 'mode': 'ro'}
+                task_path: {'bind': '/task', 'mode': 'Z'},
+                sockets_path: {'bind': '/sockets', 'mode': 'Z'},
+                course_common_path: {'bind': '/course/common', 'mode': 'ro,Z'},
+                course_common_student_path: {'bind': '/course/common/student', 'mode': 'ro,Z'}
             },
             runtime=runtime,
-            ulimits=[nofile_limit]
+            ulimits=[nofile_limit],
+            security_opt=self._get_security_opts(sockets_path),
+            **cgroups1_params
         )
         return response.id
 
     def create_container_student(self, runtime: str, image: str, mem_limit, student_path,
-                                 socket_path, systemfiles_path, taskset_common_student_path,
+                                 sockets_path, socket_id, systemfiles_path, course_common_student_path,
                                  parent_runtime: str,fd_limit, share_network_of_container: str=None, ports=None):
         """
         Creates a student container
         :param fd_limit:Tuple with soft and hard limits per slot for FS
         :param runtime: name of the docker runtime to use
         :param image: env to start (name/id of a docker image)
-        :param mem_limit: in Mo
+        :param mem_limit: in MB
         :param student_path: path to the task directory that will be mounted in the container
-        :param socket_path: path to the socket that will be mounted in the container
+        :param sockets_path: path to the parent container sockets
+        :param socket_id: id of the socket that will be mounted in the container
         :param systemfiles_path: path to the systemfiles folder containing files that can override partially some defined system files
-        :param taskset_common_student_path:
+        :param course_common_student_path:
         :param share_network_of_container: (deprecated) if a container id is given, the new container will share its
                                            network stack.
         :param ports: dictionary in the form {docker_port: external_port}
         :return: the container id
         """
         student_path = os.path.abspath(student_path)
-        socket_path = os.path.abspath(socket_path)
+        parent_socket_path = os.path.abspath(os.path.join(sockets_path, str(socket_id) + ".sock"))
         systemfiles_path = os.path.abspath(systemfiles_path)
-        taskset_common_student_path = os.path.abspath(taskset_common_student_path)
+        course_common_student_path = os.path.abspath(course_common_student_path)
         secured_scripts_path = student_path+"/scripts"
 
         if ports is None:
@@ -190,25 +204,29 @@ class DockerInterface(object):  # pragma: no cover
 
         nofile_limit = Ulimit(name='nofile', soft=fd_limit[0], hard=fd_limit[1])
 
+        cgroups1_params = {
+            "mem_swappiness": 0, "oom_kill_disable": True
+        } if self.get_cgroup_version() == "1" else {}
+
         response = self._docker.containers.create(
             image,
             stdin_open=True,
             command="_run_student_intern "+runtime + " " + parent_runtime,  # the script takes the runtimes as arguments
             mem_limit=str(mem_limit) + "M",
             memswap_limit=str(mem_limit) + "M",
-            mem_swappiness=0,
-            oom_kill_disable=True,
             network_mode=net_mode,
             ports=ports,
             volumes={
-                student_path: {'bind': '/task/student'},
-                secured_scripts_path: {'bind': '/task/student/scripts'},
-                socket_path: {'bind': '/__parent.sock'},
-                systemfiles_path: {'bind': '/task/systemfiles', 'mode': 'ro'},
-                taskset_common_student_path: {'bind': '/course/common/student', 'mode': 'ro'}
+                student_path: {'bind': '/task/student', 'mode': 'Z'},
+                secured_scripts_path: {'bind': '/task/student/scripts', 'mode': 'Z'},
+                parent_socket_path: {'bind': '/__parent.sock', 'mode': 'Z'},
+                systemfiles_path: {'bind': '/task/systemfiles', 'mode': 'ro,Z'},
+                course_common_student_path: {'bind': '/course/common/student', 'mode': 'ro,Z'}
             },
             runtime=runtime,
-            ulimits=[nofile_limit]
+            ulimits=[nofile_limit],
+            security_opt=self._get_security_opts(sockets_path),
+            **cgroups1_params
         )
 
         return response.id
@@ -220,14 +238,12 @@ class DockerInterface(object):  # pragma: no cover
     def attach_to_container(self, container_id):
         """ A socket attached to the stdin/stdout of a container. The object returned contains a get_socket() function to get a socket.socket
         object and  close_socket() to close the connection """
-        sock = self._docker.containers.get(container_id).attach_socket(params={
+        return self._docker.containers.get(container_id).attach_socket(params={
             'stdin': 1,
             'stdout': 1,
             'stderr': 0,
             'stream': 1,
         })
-        # fix a problem with docker-py; we must keep a reference of sock at every time
-        return FixDockerSocket(sock)
 
     def get_logs(self, container_id):
         """ Return the full stdout/stderr of a container"""
@@ -259,6 +275,13 @@ class DockerInterface(object):  # pragma: no cover
         """
         self._docker.containers.get(container_id).kill(signal)
 
+    def was_oom_killed(self, container_id):
+        """
+        :param container_id:
+        :return: True if the container was killed by the OOM killer, False otherwise
+        """
+        return self._docker.containers.get(container_id).attrs['State'].get('OOMKilled', False)
+
     def event_stream(self, filters=None, since=None):
         """
         :param filters: filters to apply on messages. See docker api.
@@ -275,29 +298,9 @@ class DockerInterface(object):  # pragma: no cover
         """
         return {name: x["path"] for name, x in self._docker.info()["Runtimes"].items()}
 
-class FixDockerSocket():  # pragma: no cover
-    """
-    Fix the API inconsistency of docker-py with attach_socket
-    """
-    def __init__(self, docker_py_sock):
-        self.docker_py_sock = docker_py_sock
-
-    def get_socket(self):
+    def _get_security_opts(self, seed: str) -> str:
         """
-        Returns a valid socket.socket object
+        :return: SELinux MCS label based on the given seed
         """
-        try:
-            return self.docker_py_sock._sock  # pylint: disable=protected-access
-        except AttributeError:
-            return self.docker_py_sock
-
-    def close_socket(self):
-        """
-        Correctly closes the socket
-        :return:
-        """
-        try:
-            self.docker_py_sock._sock.close()  # pylint: disable=protected-access
-        except AttributeError:
-            pass
-        self.docker_py_sock.close()
+        c1, c2 = random.Random(seed).sample(range(1024), 2)
+        return [f"label=level:s0:c{c1},c{c2}"]

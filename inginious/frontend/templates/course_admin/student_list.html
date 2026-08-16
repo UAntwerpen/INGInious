@@ -3,18 +3,17 @@
 
 {% extends "layout.html" %}
 
-{% block title %} {{ course.get_name(user_manager.session_language()) }} {% endblock %}
+{% block title %} {{ course.get_name(session.language) }} {% endblock %}
 
 {% block column %}
-{{ template_helper.call('course_admin_menu',course=course,current='students') | safe }}
+    {% with current='students' %}  {% include 'course_admin/menu.html' %}{% endwith %}
 {% endblock %}
 
 {% block navbar %}
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{ get_homepath() }}/mycourses" title="{{ _('My courses') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-graduation-cap"></i></a></li>
-            <li class="breadcrumb-item"><a href="{{get_homepath()}}/course/{{course.get_id()}}">{{ course.get_name(user_manager.session_language()) }}</a></li>
-            <li class="breadcrumb-item"><a href="{{get_homepath()}}/admin/{{course.get_id()}}" title="{{ _('Administration') }}" data-toggle="tooltip" data-placement="bottom">
+            <li class="breadcrumb-item"><a href="{{url_for('coursepage', courseid=course.get_id())}}">{{ course.get_name(session.language) }}</a></li>
+            <li class="breadcrumb-item"><a href="{{url_for('courseredirect', courseid=course.get_id())}}" title="{{ _('Administration') }}" data-toggle="tooltip" data-placement="bottom">
                 <i class="fa fa-user-secret"></i></a></li>
             <li class="breadcrumb-item active">
                 <a href="#">
@@ -54,7 +53,7 @@
     <div class="tab-content">
         <div role="tabpanel" class="card-body tab-pane active" id="tab_students">
             {% set len_all_users = user_data|length %}
-            {% set len_staff = course.get_admins()|length %}
+            {% set len_staff = course.get_staff()|length %}
             {% with user_data=user_data[len_staff:len_all_users], is_staff=False %}
                 <p>{{ _("Number of students") }} : {{ user_data | length }}</p>
                 {% include "course_admin/student_list_table.html" %}
@@ -63,7 +62,9 @@
                 <form method="post">
                     <div class="form-group row">
                         <div class="col-sm-9">
-                            {{ user_selection_box(current_users=[], name="username", id="username_search", placeholder=_("Enter something here to search for a user"), single=True) | safe }}
+                            {% with course_id=course.get_id(), current_users=[], name="username", id="username_search", placeholder=_("Enter something here to search for a user"), single=True %}
+                                {% include "course_admin/user_selection_box.html" %}
+                            {% endwith %}
                         </div>
                         <div class="col-sm-3"><button name="register_student" type="submit" class="btn btn-warning btn-block"><i class="fa fa-plus fa-lg"></i>{{ _("Add student") }}</button></div>
                     </div>
@@ -71,7 +72,7 @@
             {% endif %}
         </div>
         <div role="tabpanel" class="card-body tab-pane" id="tab_staff">
-            {% with user_data=user_data[0:(course.get_admins()|length)], is_staff=True %}
+            {% with user_data=user_data[0:(course.get_staff()|length)], is_staff=True %}
                 {% include "course_admin/student_list_table.html" %}
             {% endwith %}
         </div>
@@ -156,9 +157,10 @@
                             <th>{{_("# task done")}}</th>
                             <th>
                                 <div class="btn-group btn-group-sm" role="group">
-                                    <a href="{{get_homepath()}}/admin/{{course.get_id()}}/students?csv_audiences" class="btn btn-info btn-xs"
+                                    <a href="{{url_for('coursestudentlistpage', courseid=course.get_id(), csv_audiences='')}}" class="btn btn-info btn-xs"
                                        title="{{ _('Download CSV') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-table"></i></a>
-                                    <a href="{{get_homepath()}}/admin/{{course.get_id()}}/submissions?audiences={{ audience_list | map('string') | join(',') }}" class="btn btn-secondary btn-xs"
+                                    {% set audience_str = audience_list | map('string') | join(',') %}
+                                    <a href="{{url_for('coursesubmissionspage', courseid=course.get_id(), audiences=audience_str)}}" class="btn btn-secondary btn-xs"
                                        title="{{ _('View all submissions') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-files-o"></i></a>
                                 </div>
                             </th>
@@ -181,9 +183,9 @@
                                     <td>{{ audience["done"] }}</td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
-                                            <a href="{{get_homepath()}}/admin/{{course.get_id()}}/edit/audience/{{audience['_id']}}" class="btn btn-primary" title="{{ _('Edit audience') }}" data-toggle="tooltip"
+                                            <a href="{{ url_for('courseditaudience', courseid=course.get_id(), audienceid=str(audience['_id'])) }}" class="btn btn-primary" title="{{ _('Edit audience') }}" data-toggle="tooltip"
                                                data-placement="bottom"><i class="fa fa-edit"></i></a>
-                                            <a href="{{get_homepath()}}/admin/{{course.get_id()}}/submissions{{audience['url']}}" class="btn btn-secondary" title="{{ _('View submissions') }}" data-toggle="tooltip"
+                                            <a href="{{url_for('coursesubmissionspage', courseid=course.get_id(), audiences=str(audience['_id']))}}" class="btn btn-secondary" title="{{ _('View submissions') }}" data-toggle="tooltip"
                                                 data-placement="bottom"><i class="fa fa-file-code-o fa-fw"></i></a>
 
                                         </div>
@@ -327,7 +329,7 @@
                                         </div>
                                 {% else %}
                                     <div id="{{index+1}}" class="card mb-3 group-card group">
-                                        <input type="hidden" id="_id" name="_id" value="{{group['_id']}}" />
+                                        <input type="hidden" id="_id" name="_id" value="{{group.id}}" />
                                         <div class="card-header clearfix" role="tab">
                                             <div class="row">
                                                 <div class="col-sm-6 col-xs-12">
@@ -356,8 +358,8 @@
                                         <div class="col-sm-4 col-xs-6" style="text-align: center">
                                             <select type="text" style="height: 22px; padding: 2px 5px; font-size: 12px; line-height: 1.5;" class="form-control input-xs" id="audience_list_{{index+1}}" name="audience_list_{{index+1}}">
                                                 {% for key, audience in audience_list.items() %}
-                                                    {% if not group or audience['_id'] not in group["audiences"] %}
-                                                            <option value="{{ audience['_id'] }}">{{audience['description']}}</option>
+                                                    {% if not group or audience['id'] not in group["audiences"] %}
+                                                            <option value="{{ audience['id'] }}">{{audience['description']}}</option>
                                                     {% endif %}
                                                 {% endfor %}
                                             </select>
@@ -378,7 +380,7 @@
                                             {% else %}
                                                 <li class="list-group-item audience" id="{{audience_id}}">
                                                     <span>{{ audience["description"] }}</span>
-                                                    <input type="hidden" name="audiences" value="{{ audience['_id'] }}">
+                                                    <input type="hidden" name="audiences" value="{{ audience['id'] }}">
                                             {% endif %}
                                             <div class="pull-right"><a href="#" onclick="javascript:group_audience_remove($(this).rparent(2).attr('id'), {{ index+1 }})"><i class="fa fa-trash-o fa-lg"></i></a></div>
                                         </li>

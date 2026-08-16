@@ -1,27 +1,85 @@
-# This is a basic workflow to help you get started with Actions
+name: "CI/CD"
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the master branch
   push:
-    branches: [ master ]
+    branches: [ main, v0.9.x ]
   pull_request:
-    branches: [ master ]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: [ main, v0.9.x ]
+  release:
+    types: [published]
   workflow_dispatch:
 
+env:
+  REGISTRY: "ghcr.io"
+  VERSION: "${{ github.event_name == 'push' && github.ref_name || (github.event_name == 'release' && github.event.release.tag_name || 'ci') }}"
+  CORE_CONTAINERS: "backend frontend agent_mcq agent_docker"
+  ENV_CONTAINERS: "base default python3"
+
 jobs:
+  build_deploy_push:
+    runs-on: ubuntu-24.04
+    needs: [tests]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build core services
+        run: for stage in ${CORE_CONTAINERS}; do docker build -f deploy/Containerfile --target=${stage} -t ${REGISTRY}/inginious/core-${stage}:${VERSION} . ; done
+
+      - name: Build base environments
+        working-directory: base-containers/base
+        run: for stage in ${ENV_CONTAINERS}; do docker build --target=env-${stage} -t ${REGISTRY}/inginious/env-${stage}:${VERSION} . ; done
+
+      - name: Test deployment
+        id: deploy
+        run: |
+          docker compose up --wait --wait-timeout 60
+        timeout-minutes: 2
+        continue-on-error: true
+
+      - name: Compose logs on failure
+        if: steps.deploy.outcome == 'failure'
+        run: |
+          docker compose logs
+          exit 1
+
+      - name: Login to Docker Hub
+        if: steps.deploy.outcome == 'success' && github.event_name != 'pull_request'
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Push containers
+        if: steps.deploy.outcome == 'success' && github.event_name != 'pull_request'
+        run: |
+          for stage in ${CORE_CONTAINERS}; do docker push ${REGISTRY}/inginious/core-${stage}:${VERSION}; done
+          for stage in ${ENV_CONTAINERS}; do docker push ${REGISTRY}/inginious/env-${stage}:${VERSION}; done
+
+  compose_build_and_deploy:
+    runs-on: ubuntu-24.04
+    needs: [tests]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Test deployment
+        id: deploy
+        run: docker compose up --build --wait --wait-timeout 600
+        timeout-minutes: 15
+        continue-on-error: true
+        
+      - name: Compose logs on failure
+        if: steps.deploy.outcome == 'failure'
+        run: |
+          docker compose logs
+          exit 1
 
   tests:
-
     strategy:
       # Ensure that each python version will be tested even if one of them fails.
       fail-fast: false
       matrix:
-        python_version: ["3.10", "3.11", "3.12", "3.13"]
+        python_version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     runs-on: ubuntu-24.04
     services:
@@ -32,21 +90,17 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python_version }}
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python_version }}
 
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
           sudo apt-get install -y libtidy5deb1 libzmq3-dev
-
-      - name: Start services
-        run: |
-          sudo systemctl start docker
 
       - name: Install INGInious
         run: |
@@ -54,13 +108,13 @@ jobs:
           pip3 install .[test]
 
       - name: Launch pytest tests
-        run: coverage run --branch -m pytest -v
+        run: coverage run -a --branch -m pytest -v
 
       - name: Launch pytest tests not requiring INGInious modules
         run: |
           python3 -m venv env
           env/bin/pip3 install jinja2==3.1.3 pytest==8.0.0 coverage==7.4.1
-          env/bin/coverage run --branch -m pytest -v utils
+          env/bin/coverage run --branch -m pytest -v inginious/scripts/task_tester
 
       - name: Generate coverage report
         # Launch even if one of the two test jobs fails

@@ -5,38 +5,33 @@
 
 """ An algorithm contest plugin for INGInious. Based on the same principles than contests like ACM-ICPC. """
 
+import os
 import copy
 from collections import OrderedDict
 from datetime import datetime, timedelta
 
-import pymongo
-import flask
+from flask import request, render_template
 
 from werkzeug.exceptions import NotFound
+from inginious.frontend.courses import Course
 from inginious.frontend.accessible_time import AccessibleTime
-from inginious.frontend.pages.course_admin.utils import INGIniousAdminPage
 from inginious.frontend.pages.utils import INGIniousAuthPage
 from inginious.frontend.task_dispensers.toc import TableOfContents
+from inginious.frontend.task_dispensers import register_task_dispenser
+from inginious.frontend.models import Submission
 
-
-def add_admin_menu(course): # pylint: disable=unused-argument
-    """ Add a menu for the contest settings in the administration """
-    task_dispenser = course.get_task_dispenser()
-    if task_dispenser.get_id() == Contest.get_id():
-        return ('contest', '<i class="fa fa-trophy fa-fw"></i>&nbsp; Contest')
-    else:
-        return None
+PATH_TO_PLUGIN = os.path.abspath(os.path.dirname(__file__))
 
 
 class Contest(TableOfContents):
 
-    def __init__(self, task_list_func, dispenser_data, database, course_id):
-        TableOfContents.__init__(self, task_list_func, dispenser_data.get("toc_data", {}), database, course_id)
+    def __init__(self, task_list_func, dispenser_data, course_id):
+        TableOfContents.__init__(self, task_list_func, dispenser_data.get("toc_data", {}), course_id)
         self._contest_settings = dispenser_data.get(
             'contest_settings',
             {"enabled": False,
-             "start": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-             "end": (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
+             "start": datetime.now().astimezone().isoformat(),
+             "end": (datetime.now().astimezone() + timedelta(hours=1)).isoformat(),
              "blackout": 0,
              "penalty": 20}
         )
@@ -49,15 +44,83 @@ class Contest(TableOfContents):
     def get_name(cls, language):
         return "Contest"
 
+    def render_edit(self, course, task_data, task_errors):
+        """ Returns the formatted task list edition form """
+        config_fields = {}
+
+        task_dispenser = course.get_task_dispenser()
+        if not task_dispenser.get_id() == Contest.get_id():
+            raise NotFound()
+        contest_data = task_dispenser.get_contest_data()
+
+        return render_template("contests/contests.html", course=course,
+                                      course_structure=self._toc, tasks=task_data, task_errors=task_errors,
+                                      config_fields=config_fields, dispenser_config=self._task_config, data=contest_data, errors=None, saved=False)
+
+    def save_contest_data(self, course, contest_data):
+        """ Saves updated contest data for the course """
+        course_content = course.get_descriptor()
+        course_content["dispenser_data"]["contest_settings"] = contest_data
+
+        Course(course.get_id(), course_content).save()
+
     def check_dispenser_data(self, dispenser_data):
         """ Checks the dispenser data as formatted by the form from render_edit function """
         data, errors = TableOfContents.check_dispenser_data(self, dispenser_data)
+
+        contest_data = self.get_contest_data()
+        new_data = dispenser_data['settings']
+        try:
+            contest_data['enabled'] = new_data.get('enabled', False) == True
+            contest_data['start'] = new_data["start"]
+            contest_data['end'] = new_data["end"]
+
+            try:
+                start = datetime.fromisoformat(contest_data['start'])
+            except:
+                errors ='Invalid start date'
+
+            try:
+                end = datetime.fromisoformat(contest_data['end'])
+            except:
+                errors = 'Invalid end date'
+
+            if len(errors) == 0:
+                if start >= end:
+                    errors = 'Start date should be before end date'
+
+            try:
+                contest_data['blackout'] = int(new_data["blackout"])
+                if contest_data['blackout'] < 0:
+                    errors = 'Invalid number of hours for the blackout: should be greater than 0'
+            except:
+                errors = 'Invalid number of hours for the blackout'
+
+            try:
+                contest_data['penalty'] = int(new_data["penalty"])
+                if contest_data['penalty'] < 0:
+                    errors = 'Invalid number of minutes for the penalty: should be greater than 0'
+            except:
+                errors = 'Invalid number of minutes for the penalty'
+        except:
+            errors = 'User returned an invalid form'
+
+        if len(errors) != 0:
+            return None, errors
         return {"toc_data": data, "contest_settings": self._contest_settings} if data else None, errors
 
     def get_accessibilities(self, taskids, usernames): # pylint: disable=unused-argument
+        tasks_in_toc = self._toc.get_tasks()
         contest_data = self.get_contest_data()
         if contest_data['enabled']:
-            return {username: {taskid: AccessibleTime(contest_data['start'] + '/') for taskid in taskids} for username in usernames}
+            return {
+                username: {
+                    taskid: AccessibleTime(contest_data['start'] + '/')
+                    if taskid in tasks_in_toc else AccessibleTime(False)
+                    for taskid in taskids
+                }
+                for username in usernames
+            }
         else:
             return TableOfContents.get_accessibilities(self, taskids, usernames)
 
@@ -66,15 +129,7 @@ class Contest(TableOfContents):
         return self._contest_settings
 
 
-def additional_headers():
-    """ Additional HTML headers """
-    return '<link href="' + flask.request.url_root \
-           + '/static/plugins/contests/scoreboard.css" rel="stylesheet">' \
-             '<script src="' + flask.request.url_root + '/static/plugins/contests/jquery.countdown.min.js"></script>' \
-             '<script src="' + flask.request.url_root + '/static/plugins/contests/contests.js"></script>'
-
-
-def course_menu(course, template_helper):
+def course_menu(course):
     """ Displays some informations about the contest on the course page"""
     task_dispenser = course.get_task_dispenser()
     if not task_dispenser.get_id() == Contest.get_id():
@@ -82,11 +137,10 @@ def course_menu(course, template_helper):
 
     contest_data = task_dispenser.get_contest_data()
     if contest_data['enabled']:
-        start = datetime.strptime(contest_data['start'], "%Y-%m-%d %H:%M:%S")
-        end = datetime.strptime(contest_data['end'], "%Y-%m-%d %H:%M:%S")
+        start = datetime.fromisoformat(contest_data['start']).astimezone()
+        end = datetime.fromisoformat(contest_data['end']).astimezone()
         blackout = end - timedelta(hours=contest_data['blackout'])
-        return template_helper.render("course_menu.html", template_folder="frontend/plugins/contests",
-                                      course=course, start=start, end=end, blackout=blackout)
+        return render_template("contests/course_menu.html", course=course, start=start, end=end, blackout=blackout)
     else:
         return None
 
@@ -95,26 +149,23 @@ class ContestScoreboard(INGIniousAuthPage):
     """ Displays the scoreboard of the contest """
 
     def GET_AUTH(self, courseid):  # pylint: disable=arguments-differ
-        course = self.course_factory.get_course(courseid)
+        course = Course.get(courseid)
         task_dispenser = course.get_task_dispenser()
         if not task_dispenser.get_id() == Contest.get_id():
             raise NotFound()
         contest_data = task_dispenser.get_contest_data()
         if not contest_data['enabled']:
             raise NotFound()
-        start = datetime.strptime(contest_data['start'], "%Y-%m-%d %H:%M:%S")
-        end = datetime.strptime(contest_data['end'], "%Y-%m-%d %H:%M:%S")
+        start = datetime.fromisoformat(contest_data['start']).astimezone()
+        end = datetime.fromisoformat(contest_data['end']).astimezone()
         blackout = end - timedelta(hours=contest_data['blackout'])
 
         users = self.user_manager.get_course_registered_users(course)
         tasks = list(course.get_tasks().keys())
 
-        db_results = self.database.submissions.find({
-            "username": {"$in": users},
-            "courseid": courseid,
-            "submitted_on": {"$gte": start, "$lt": blackout},
-            "status": "done"},
-            {"username": True, "_id": False, "taskid": True, "result": True, "submitted_on": True}).sort([("submitted_on", pymongo.ASCENDING)])
+        db_results = Submission.objects(
+            username__in=users, courseid=courseid, submitted_on__gte=start, submitted_on__lt=blackout, status="done"
+        ).only("username", "id", "taskid", "result", "submitted_on").order_by("submitted_on")
 
         task_status = {taskid: {"status": "NA", "tries": 0} for taskid in tasks}
         results = {username: {"name": self.user_manager.get_user_realname(username), "tasks": copy.deepcopy(task_status)} for username in users}
@@ -181,85 +232,12 @@ class ContestScoreboard(INGIniousAuthPage):
                 results[user]["rank"] = current_rank
                 results[user]["displayed_rank"] = ""
 
-        return self.template_helper.render("scoreboard.html", template_folder="frontend/plugins/contests",
+        return render_template("contests/scoreboard.html",
                                            course=course, start=start, end=end, blackout=blackout, tasks=tasks,
                                            results=results, activity=activity)
 
 
-class ContestAdmin(INGIniousAdminPage):
-    """ Contest settings for a course """
-
-    def save_contest_data(self, course, contest_data):
-        """ Saves updated contest data for the course """
-        course_content = self.course_factory.get_course_descriptor_content(course.get_id())
-        course_content["dispenser_data"]["contest_settings"] = contest_data
-        self.course_factory.update_course_descriptor_content(course.get_id(), course_content)
-
-    def GET_AUTH(self, courseid):  # pylint: disable=arguments-differ
-        """ GET request: simply display the form """
-        course, __ = self.get_course_and_check_rights(courseid)
-        task_dispenser = course.get_task_dispenser()
-        if not task_dispenser.get_id() == Contest.get_id():
-            raise NotFound()
-        contest_data = task_dispenser.get_contest_data()
-        return self.template_helper.render("admin.html", template_folder="frontend/plugins/contests", course=course,
-                                           data=contest_data, errors=None, saved=False)
-
-    def POST_AUTH(self, courseid):  # pylint: disable=arguments-differ
-        """ POST request: update the settings """
-        course, __ = self.get_course_and_check_rights(courseid)
-        task_dispenser = course.get_task_dispenser()
-        if not task_dispenser.get_id() == Contest.get_id():
-            raise NotFound()
-        contest_data = task_dispenser.get_contest_data()
-
-        new_data = flask.request.form
-        errors = []
-        try:
-            contest_data['enabled'] = new_data.get('enabled', '0') == '1'
-            contest_data['start'] = new_data["start"]
-            contest_data['end'] = new_data["end"]
-
-            try:
-                start = datetime.strptime(contest_data['start'], "%Y-%m-%d %H:%M:%S")
-            except:
-                errors.append('Invalid start date')
-
-            try:
-                end = datetime.strptime(contest_data['end'], "%Y-%m-%d %H:%M:%S")
-            except:
-                errors.append('Invalid end date')
-
-            if len(errors) == 0:
-                if start >= end:
-                    errors.append('Start date should be before end date')
-
-            try:
-                contest_data['blackout'] = int(new_data["blackout"])
-                if contest_data['blackout'] < 0:
-                    errors.append('Invalid number of hours for the blackout: should be greater than 0')
-            except:
-                errors.append('Invalid number of hours for the blackout')
-
-            try:
-                contest_data['penalty'] = int(new_data["penalty"])
-                if contest_data['penalty'] < 0:
-                    errors.append('Invalid number of minutes for the penalty: should be greater than 0')
-            except:
-                errors.append('Invalid number of minutes for the penalty')
-        except:
-            errors.append('User returned an invalid form')
-
-        if len(errors) == 0:
-            self.save_contest_data(course, contest_data)
-            return self.template_helper.render("admin.html", template_folder="frontend/plugins/contests", course=course,
-                                               data=contest_data, errors=None, saved=True)
-        else:
-            return self.template_helper.render("admin.html", template_folder="frontend/plugins/contests", course=course,
-                                               data=contest_data, errors=errors, saved=False)
-
-
-def init(plugin_manager, taskset_factory, client, config):  # pylint: disable=unused-argument
+def init(plugin_manager, client, config):  # pylint: disable=unused-argument
     """
         Init the contest plugin.
         Available configuration:
@@ -271,8 +249,9 @@ def init(plugin_manager, taskset_factory, client, config):  # pylint: disable=un
     """
 
     plugin_manager.add_page('/contest/<courseid>', ContestScoreboard.as_view('contestscoreboard'))
-    plugin_manager.add_page('/admin/<courseid>/contest', ContestAdmin.as_view('contestadmin'))
-    plugin_manager.add_hook('course_admin_menu', add_admin_menu)
-    plugin_manager.add_hook('header_html', additional_headers)
+    plugin_manager.add_hook('css', lambda: '/static/plugins/contests/scoreboard.css')
+    plugin_manager.add_hook('javascript_header', lambda : '/static/plugins/contests/jquery.countdown.min.js')
+    plugin_manager.add_hook('javascript_header', lambda : '/static/plugins/contests/contests.js')
     plugin_manager.add_hook('course_menu', course_menu)
-    taskset_factory.add_task_dispenser(Contest)
+    plugin_manager.add_template_prefix("contests", PATH_TO_PLUGIN)
+    register_task_dispenser(Contest)

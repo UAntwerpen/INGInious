@@ -4,12 +4,14 @@
 {% extends "layout.html" %}
 
 {% set registered = user_manager.course_is_user_registered(course) %}
-{% set staff = user_manager.has_admin_rights_on_course(course) %}
+{% set staff = user_manager.has_staff_rights_on_course(course) %}
 
-{% block title %}{{ course.get_name(user_manager.session_language()) }}{% endblock %}
+{% block title %}{{ course.get_name(session.language) }}{% endblock %}
 
 {% block column %}
-    {{ template_helper.call('course_menu', course=course, template_helper=template_helper) | safe }}
+    {% for entry in plugin_manager.call_hook('course_menu', course=course) %}
+        {{ entry | safe }}
+    {% endfor %}
     {% if registered or staff %}
         <h3>{{ _("Current grade") }}</h3>
         <div class="progress mb-3">
@@ -32,7 +34,7 @@
                         {% else %}
                             list-group-item-danger
                         {% endif %}"
-                        href="{{ get_homepath() }}/course/{{submission['courseid']}}/{{submission['taskid']}}">
+                        href="{{ url_for('taskpage', courseid=submission['courseid'], taskid=submission['taskid']) }}">
                         {{ submission['taskname'] }}
                     </a>
                 {% endfor %}
@@ -40,7 +42,6 @@
                 <a class="list-group-item list-group-item-action disabled submission-empty">{{ _("No submissions") }}</a>
             {% endif %}
         </div>
-
     {% endif %}
     {%if staff %}
         {% if not course.is_open_to_non_staff() %}
@@ -49,26 +50,20 @@
             </div>
         {% endif %}
         <div class="list-group">
-            <a class="list-group-item list-group-item-action list-group-item-info" href="{{ get_homepath() }}/user_settings/{{ course.get_id() }}">
-                <i class="fa fa-smile-o fa-fw"></i>&nbsp; {{ _("User settings") }}
-            </a>
-            <a class="list-group-item list-group-item-action list-group-item-info" href="{{ get_homepath() }}/admin/{{ course.get_id() }}">
+            <a class="list-group-item list-group-item-action list-group-item-info" href="{{ url_for('courseredirect', courseid=course.get_id()) }}">
                 <i class="fa fa-user-secret fa-fw"></i>&nbsp; {{ _("Course administration") }}
             </a>
         </div>
     {% elif registered %}
         <div class="list-group">
-            <a class="list-group-item list-group-item-action list-group-item-info" href="{{ get_homepath() }}/group/{{ course.get_id() }}">
+            <a class="list-group-item list-group-item-action list-group-item-info" href="{{ url_for('grouppage', courseid=course.get_id()) }}">
                 <i class="fa fa-group fa-fw"></i>&nbsp;
                 {% set mygroup = user_manager.get_course_user_group(course) %}
-                {% if mygroup and user_manager.session_username() in mygroup['students'] %}
+                {% if mygroup and session.username in mygroup['students'] %}
                     {{ _("Group : {}").format(mygroup['description']) }}
                 {% else %}
                     {{ _("Group management") }}
                 {% endif %}
-            </a>
-            <a class="list-group-item list-group-item-action list-group-item-info" href="{{ get_homepath() }}/user_settings/{{ course.get_id() }}">
-                <i class="fa fa-smile-o fa-fw"></i>&nbsp; {{ _("User settings") }}
             </a>
             {% if course.allow_unregister() %}
                 <a href="#" data-toggle="modal" data-target="#unregister_modal" class="list-group-item list-group-item-action list-group-item-info">
@@ -76,7 +71,7 @@
                 </a>
             {% endif %}
         </div>
-    {% elif not user_manager.session_logged_in() %}
+    {% elif not session.loggedin %}
         {% include "signin_button.html" %}
     {% elif course.is_registration_possible(user_info) %}
         <h3>{{ _("Enroll in the course") }}</h3>
@@ -85,7 +80,7 @@
             {{ _("Please enroll in the course to be able to submit answers to problems.") }}
         </div>
         <div class="list-group">
-            <a href="{{ get_homepath() }}/register/{{ course.get_id() }}" class="list-group-item list-group-item-action list-group-item-info">
+            <a href="{{ url_for('courseregisterpage', courseid=course.get_id()) }}" class="list-group-item list-group-item-action list-group-item-info">
                 <i class="fa fa-sign-in fa-fw"></i>&nbsp; {{ _("Enroll in the course") }}
             </a>
         </div>
@@ -96,11 +91,11 @@
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             {% if registered %}
-                <li class="breadcrumb-item"><a href="{{ get_homepath() }}/mycourses" title="{{ _('My courses') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-graduation-cap"></i></a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('mycoursespage') }}" title="{{ _('My courses') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-th-list"></i></a></li>
             {% else %}
-                <li class="breadcrumb-item"><a href="{{get_homepath() }}/courselist" title="{{ _('Course list') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-graduation-cap"></i></a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('courselistpage') }}" title="{{ _('Course list') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-th-list"></i></a></li>
             {% endif %}
-            <li class="breadcrumb-item active"><a href="#">{{ course.get_name(user_manager.session_language()) }} <span class="sr-only">{{ _("(current)") }}</span></a></li>
+            <li class="breadcrumb-item active"><a href="#">{{ course.get_name(session.language) }} <span class="sr-only">{{ _("(current)") }}</span></a></li>
         </ol>
     </nav>
 {% endblock %}
@@ -108,7 +103,7 @@
 {% block content %}
 <div class="row pr-3">
     <div class="col-md-8">
-        <h2>{{ course.get_name(user_manager.session_language()) }}</h2>
+        <h2>{{ course.get_name(session.language) }}</h2>
     </div>
 
     {%if category_filter_list %}
@@ -133,7 +128,7 @@
             </div>
             <div id="course_desc" class="collapse" role="tabpanel" aria-labelledby="course_desc_head">
                 <div class="card-body">
-                    {{ course.get_description(user_manager.session_language()) | safe}}
+                    {{ course.get_description(session.language) | safe}}
                 </div>
             </div>
         </div>
@@ -180,7 +175,7 @@ function filter_tag(tag) {
     }
 </style>
 
-{{ course.get_task_dispenser().render(template_helper, course, tasks_data, category_filter_list,user_manager.session_username()) | safe }}
+{{ course.get_task_dispenser().render(course, tasks_data, category_filter_list,session.username) | safe }}
 
 {% include "unregister_modal.html" %}
 

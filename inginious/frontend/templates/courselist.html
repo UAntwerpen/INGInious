@@ -4,20 +4,28 @@
 {% extends "layout.html" %}
 {% block title %}{{_("Course list") }}{% endblock %}
 {% block column %}
-    {% if not user_manager.session_logged_in() %}
+    {% if not session.loggedin %}
         {% include "signin_button.html" %}
     {% else %}
         <h3> {{ _("Public courses") }}</h3>
         <div class="alert alert-warning" role="alert">
             {{ _("This page lists all the courses that are available now. If you are a course administrator, go to your 'My courses' page to see all of them.") }}
         </div>
-        {{ template_helper.call('main_menu', template_helper=template_helper) | safe }}
+        <div class="list-group">
+            <a class="list-group-item list-group-item-action list-group-item-info" href="{{url_for('mycoursespage')}}">
+                <i class="fa fa-fw fa-th-list"></i>
+                {{ _("My courses") }}
+            </a>
+        </div>
+        {% for entry in plugin_manager.call_hook('main_menu') %}
+            {{ entry }}
+        {% endfor %}
     {% endif %}
 {% endblock %}
 {% block navbar %}
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item active"><a href="#"><i class="fa fa-graduation-cap fa-fw"></i> {{ _("Course list") }}
+            <li class="breadcrumb-item active"><a href="#"><i class="fa fa-th-list fa-fw"></i> {{ _("Course list") }}
                 <span class="sr-only">{{_("(current)")}}</span></a></li>
         </ol>
     </nav>
@@ -27,7 +35,7 @@
 <h2>{{ _("Course list") }}</h2>
 <div class="card-deck m-0">
 
-    {% set username = user_manager.session_username() %}
+    {% set username = session.username %}
     {% for courseid, course in open_courses.items() %}
         <div class="card m-2">
             <div class="card-body">
@@ -36,16 +44,16 @@
                         {% if course.lti_url() %}
                             <a target="_blank" href="{{ course.lti_url() }}">
                         {% endif %}
-                        {{course.get_name(user_manager.session_language())}}
+                        {{course.get_name(session.language)}}
                         {% if course.lti_url() %}
                             </a>
                         {% endif %}
                     {% else %}
-                        <a href="{{ get_homepath()+'/course/'+courseid }}">{{course.get_name(user_manager.session_language())}}</a>
+                        <a href="{{ url_for('coursepage', courseid=courseid) }}">{{course.get_name(session.language)}}</a>
                     {% endif %}
                 </h5>
                 <div class="card-text card-trunc">
-                    {{ course.get_description(user_manager.session_language()) | safe }}
+                    {{ course.get_description(session.language) | safe }}
                 </div>
             </div>
             <div class="card-footer">

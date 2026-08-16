@@ -15,6 +15,8 @@ import zmq
 from inginious.common.messages import AgentHello, BackendJobId, SPResult, AgentJobDone, BackendNewJob, BackendKillJob, \
     AgentJobStarted, AgentJobSSHDebug, Ping, Pong, ZMQUtils
 
+from inginious.common.filesystems import get_fs_provider
+
 """
 Various utils to implements new kind of agents easily.
 """
@@ -48,17 +50,16 @@ class Agent(object, metaclass=ABCMeta):
     An INGInious agent, that grades specific kinds of jobs, and interacts with a Backend.
     """
 
-    def __init__(self, context, backend_addr, friendly_name, concurrency, filesystem):
+    def __init__(self, context, backend_addr, friendly_name, concurrency):
         """
         :param context: a ZMQ context to which the agent will be linked
         :param backend_addr: address of the backend to which the agent should connect. The format is the same as ZMQ
         :param concurrency: number of simultaneous jobs that can be run by this agent
-        :param filesystem: filesystem for the tasks
         """
         # These fields can be read/modified/overridden in subclasses
         self._logger = logging.getLogger("inginious.agent")
         self._loop = asyncio.get_event_loop()
-        self._fs = filesystem
+        self._fs = get_fs_provider()
 
         # These fields should not be read/modified/overridden in subclasses
         self.__concurrency = concurrency
@@ -90,6 +91,7 @@ class Agent(object, metaclass=ABCMeta):
                             "id": "env img id",   # "sha256:715...dd3"
                             "created": 12345678,  # create date
                             "ports": [22, 434],   # list of ports needed
+                            "advertised": True,           # if False, the environment will not be proposed to the clients, but can still be used in new_job() method
                         }
                     }
                 }
@@ -165,17 +167,22 @@ class Agent(object, metaclass=ABCMeta):
         # Tell the backend we started running the job
         await ZMQUtils.send(self.__backend_socket, AgentJobStarted(message.job_id))
 
+        if message.course_id is None and message.task_id is None:
+            # job not linked to a course/task
+            await self.new_job(message)
+            return
+        
         try:
             if message.environment_type not in self.environments or message.environment not in self.environments[message.environment_type]:
-                self._logger.warning("Task %s/%s ask for an unknown environment %s/%s", message.taskset_id, message.task_id,
+                self._logger.warning("Task %s/%s ask for an unknown environment %s/%s", message.course_id, message.task_id,
                                      message.environment_type, message.environment)
-                raise CannotCreateJobException('This environment is not available in this agent. Please contact the taskset administrator.')
+                raise CannotCreateJobException('This environment is not available in this agent. Please contact your course administrator.')
 
-            task_fs = self._fs.from_subfolder(message.taskset_id).from_subfolder(message.task_id)
+            task_fs = self._fs.from_subfolder(message.course_id).from_subfolder(message.task_id)
             if not task_fs.exists():
-                self._logger.warning("Task %s/%s unavailable on this agent", message.taskset_id, message.task_id)
+                self._logger.warning("Task %s/%s unavailable on this agent", message.course_id, message.task_id)
                 raise CannotCreateJobException('Task unavailable on agent. Please retry later, the agents should synchronize soon. If the error '
-                                               'persists, please contact the taskset administrator.')
+                                               'persists, please contact your course administrator.')
 
             # Let the subclass run the job
             await self.new_job(message)
@@ -184,14 +191,14 @@ class Agent(object, metaclass=ABCMeta):
         except TooManyCallsException:
             self._logger.exception("TooManyCallsException in new_job")
             await self.send_job_result(job_id=message.job_id, result="crash",
-                                       text="An unknown error occurred in the agent. Please contact the taskset administrator.",
+                                       text="An unknown error occurred in the agent. Please contact your course administrator.",
                                        state=previous_state)
         except JobNotRunningException:
             self._logger.exception("JobNotRunningException in new_job")
         except:
             self._logger.exception("Unknown exception in new_job")
             await self.send_job_result(job_id=message.job_id, result="crash",
-                                       text="An unknown error occurred in the agent. Please contact the taskset administrator.",
+                                       text="An unknown error occurred in the agent. Please contact your course administrator.",
                                        state=previous_state)
 
     async def send_ssh_job_info(self, job_id: BackendJobId, host: str, port: int, username: str, key: str):
