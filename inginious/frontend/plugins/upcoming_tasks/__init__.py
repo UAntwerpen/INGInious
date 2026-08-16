@@ -8,18 +8,17 @@
 import os
 from collections import OrderedDict
 from datetime import datetime, timedelta
-from flask import session, request, send_from_directory, render_template
+import flask
+from flask import send_from_directory
 
-from inginious.frontend.courses import Course
-from inginious.frontend.models import UserTask
 from inginious.frontend.pages.utils import INGIniousPage, INGIniousAuthPage
 
 PATH_TO_PLUGIN = os.path.abspath(os.path.dirname(__file__))
 
 
-def menu():
+def menu(template_helper):
     """ Displays the link to the board on the main page, if the plugin is activated """
-    return render_template("upcoming_tasks/main_menu.html")
+    return template_helper.render("main_menu.html", template_folder=PATH_TO_PLUGIN + '/templates/')
 
 
 class StaticMockPage(INGIniousPage):
@@ -41,7 +40,7 @@ class UpComingTasksBoard(INGIniousAuthPage):
 
     def POST_AUTH(self):
         """ Called when modifying time planner """
-        user_input = request.form
+        user_input = flask.request.form
         time_planner = user_input.get("time_planner", default="unlimited")
         return self.page(time_planner)
 
@@ -53,8 +52,8 @@ class UpComingTasksBoard(INGIniousAuthPage):
 
     def page(self, time_planner):
         """ General main method called for GET and POST """
-        username = session.username
-        all_courses = Course.get_all()
+        username = self.user_manager.session_username()
+        all_courses = self.course_factory.get_all_courses()
         time_planner = self.time_planner_conversion(time_planner)
 
         # Get the courses id
@@ -63,7 +62,7 @@ class UpComingTasksBoard(INGIniousAuthPage):
                         self.user_manager.course_is_user_registered(course, username)}
 
         # Get last submissions for left panel
-        last_submissions = self.submission_manager.get_user_last_submissions(5, {"courseid__in": list(open_courses.keys())})
+        last_submissions = self.submission_manager.get_user_last_submissions(5, {"courseid": {"$in": list(open_courses.keys())}})
         except_free_last_submissions = []
         for submission in last_submissions:
             try:
@@ -88,7 +87,7 @@ class UpComingTasksBoard(INGIniousAuthPage):
             new_user_task_list = [taskid for taskid, accessibility in accessibilities.items() if accessibility.after_start() and taskid not in outdated_tasks]
 
             tasks_data[courseid] = {taskid: {"succeeded": False, "grade": 0.0} for taskid in new_user_task_list}
-            user_tasks = UserTask.objects(username=username, courseid=course.get_id(), taskid__in=new_user_task_list)
+            user_tasks = self.database.user_tasks.find({"username": username, "courseid": course.get_id(), "taskid": {"$in": new_user_task_list}})
             for user_task in user_tasks:
                 if not user_task["succeeded"]:
                     tasks_data[courseid][user_task["taskid"]]["succeeded"] = user_task["succeeded"]
@@ -111,7 +110,8 @@ class UpComingTasksBoard(INGIniousAuthPage):
         # Sort the courses based on the most urgent task for each course
         open_courses = OrderedDict(sorted(list(open_courses.items()), key=lambda x: all_accessibilities[x[0]][list(sorted_tasks[x[0]].keys())[0]].get_soft_end_date()))
 
-        return render_template("upcoming_tasks/coming_tasks.html",
+        return self.template_helper.render("coming_tasks.html",
+                                           template_folder=PATH_TO_PLUGIN + "/templates/",
                                            open_courses=open_courses,
                                            tasks_data=tasks_data,
                                            sorted_tasks=sorted_tasks,
@@ -119,9 +119,8 @@ class UpComingTasksBoard(INGIniousAuthPage):
                                            submissions=except_free_last_submissions)
 
 
-def init(plugin_manager, client, config):
+def init(plugin_manager, _, _2, config):
     """ Init the plugin """
     plugin_manager.add_page('/coming_tasks', UpComingTasksBoard.as_view("upcomingtasksboardpage"))
     plugin_manager.add_page('/plugins/coming_tasks/static/<path:path>', StaticMockPage.as_view("upcomingtasksstaticmockpage"))
     plugin_manager.add_hook('main_menu', menu)
-    plugin_manager.add_template_prefix('upcoming_tasks', PATH_TO_PLUGIN + "/templates")

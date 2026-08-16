@@ -36,6 +36,9 @@ The different entries are :
       the backend you started manually. This is for advanced users only. See commands ``inginious-backend`` and ``inginious-agent`` for more
       information.
 
+``backup_directory``
+    Path to the directory where are courses backup are stored in cases of data wiping.
+
 ``local-config``
     These configuration options are available only if you set ``backend:local``.
 
@@ -53,15 +56,8 @@ The different entries are :
     ``tmp_dir``
         A directory whose absolute path must be available by the docker daemon and INGInious at the same time. By default, it is ``./agent_tmp``.
 
-    ``debugger``
-        Enables container debugging if set to ``true``. It is available only for Pycharm's debugging with a python debug server using port 5678. It is disabled by default.
-
 ``log_level``
     Can be set to ``INFO``, ``WARN``, or ``DEBUG``. Specifies the logging verbosity.
-
-``lti_config``
-    A dictionary containing the LTI v1.3 tool consumers configuration.
-    See :ref:`lti13` for configuration details.
 
 ``maintenance``
     Set to ``true`` if the webapp must be disabled.
@@ -156,11 +152,14 @@ The different entries are :
             cookie_path: null
             samesite: "Lax"
             timeout: 86400  # 24 * 60 * 60, # 24 hours in seconds
+            ignore_change_ip: False
             httponly: True
             secret_key: "fLjUfxqXtfNoIldA0A0G"
             secure: False
 
     Most value are as defined in standard HTTP cookies. The ``secret_key`` should be a long sequence of random characters.
+    ``ignore_change_ip`` indicates whether users that change IP should be disconnected or not. This may prevent cookie
+    stealing partly.
 
 ``reverse-proxy-config``
     A dictionary for reverse proxy configuration.
@@ -303,6 +302,29 @@ created app. Replace ``facebook_auth`` by ``linkedin_auth``, ``github_auth`` or 
 
 Set ``debug`` to ``true`` to allow OAuth to be run in debug mode (for instance, if SSL is not yet set up).
 
+Twitter
+!!!!!!!
+
+Uses a Twitter application to allow authentication and sharing via the network.
+You need to create two apps on the appropriate developer platform in order to use this plugin. One will only have
+authentication capabilities and the other one will be able to write posts for the user in order to share results.
+
+To enable this plugin, add to your configuration file:
+::
+
+    plugins:
+        - plugin_module: inginious.frontend.plugins.auth.twitter_auth
+          id: twitter
+          debug: false
+          client_id: <app_id_auth_only>
+          client_secret: <app_secret_auth_only>
+          share_client_id: <app_id_with_share_rights>
+          share_client_secret: <app_secret_with_share_rights>
+          user: <user_who_created_the_app>
+
+``id`` is the authentication method id. ``client_id`` and ``client_secret`` are the OAuth identifier and secret of the
+created app. Set ``debug`` to ``true`` to allow OAuth to be run in debug mode (for instance, if SSL is not yet set up).
+
 Scoreboard plugin
 `````````````````
 
@@ -328,7 +350,7 @@ associated to a course (See :ref:`course`). For instance:
 This defines three scoreboards for the course. The first one will create a scoreboard for task id ``taskid1`` and will
 be displayed as ``Scoreboard task 1``. The second one will create a scoreboard for ``taskid2`` and ``taskid3`` where
 both scores are added. The last one is more complex and will create a reversed scoreboard for task ``taskid4`` and
-``taskid5`` where both scores are weighted by factor ``2`` and ``3``, respectively.
+``taskid5`` where both scores are wieghted by factor ``2`` and ``3``, respectively.
 
 The score used by this plugin for each task must be generated via a key/value custom feedback
 (see :ref:`feedback-custom`) using the ``score`` key. Only the *succeeded* tasks are taken into account.

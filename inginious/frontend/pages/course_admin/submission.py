@@ -5,7 +5,8 @@
 
 import logging
 
-from flask import  session, request, redirect, render_template, url_for
+import flask
+from flask import redirect
 from werkzeug.exceptions import NotFound, Forbidden
 from bson.errors import InvalidId
 
@@ -39,26 +40,31 @@ class SubmissionPage(INGIniousAdminPage):
         course, task, submission = self.fetch_submission(submissionid)
         is_admin = self.user_manager.has_admin_rights_on_course(course)
 
-        webinput = request.form
+        webinput = flask.request.form
         if "replay" in webinput and is_admin:
             self.submission_manager.replay_job(course, task, submission, course.get_task_dispenser())
         elif "replay-copy" in webinput:  # Authorized for tutors
             self.submission_manager.replay_job(course, task, submission, course.get_task_dispenser(), True)
-            return redirect(url_for("taskpage", courseid=course.get_id(), taskid=task.get_id()))
+            return redirect(self.app.get_homepath() + "/course/" + course.get_id() + "/" + task.get_id())
         elif "replay-debug" in webinput and is_admin:
             self.submission_manager.replay_job(course, task, submission, course.get_task_dispenser(), True, "ssh")
-            return redirect(url_for("taskpage", courseid=course.get_id(), taskid=task.get_id()))
+            return redirect(self.app.get_homepath() + "/course/" + course.get_id() + "/" + task.get_id())
 
         return self.page(course, task, submission)
 
     def page(self, course, task, submission):
         """ Get all data and display the page """
-        submission = self.submission_manager.get_feedback_from_submission(submission, show_everything=True)
+        submission = self.submission_manager.get_input_from_submission(submission)
+        submission = self.submission_manager.get_feedback_from_submission(
+            submission,
+            show_everything=True,
+            translation=self.app.l10n_manager.get_translation_obj()
+        )
 
         to_display = {
             problem.get_id(): {
                 "id": problem.get_id(),
-                "name": problem.get_name(session.language),
+                "name": problem.get_name(self.user_manager.session_language()),
                 "defined": True
             } for problem in task.get_problems()
         }
@@ -68,9 +74,9 @@ class SubmissionPage(INGIniousAdminPage):
                 "id": pid,
                 "name": pid,
                 "defined": False
-            } for pid in (set(submission.get_input()) - set(to_display))
+            } for pid in (set(submission["input"]) - set(to_display))
         })
 
-        return render_template("course_admin/submission.html", course=course, task=task,
+        return self.template_helper.render("course_admin/submission.html", course=course, task=task,
                                            submission=submission, to_display=to_display.values(),
                                            pdict={problem.get_id(): problem.get_type() for problem in task.get_problems()})

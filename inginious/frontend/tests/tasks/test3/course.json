@@ -1,0 +1,8 @@
+{
+  "name": "Unit test 3",
+  "admins": [
+    "testadmin1",
+    "testadmin2"
+  ],
+  "public": true
+}

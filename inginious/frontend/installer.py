@@ -16,13 +16,9 @@ import docker
 from docker.errors import BuildError
 from gridfs import GridFS
 from pymongo import MongoClient
-from mongoengine import connect
-
-
 from inginious import __version__
 import inginious.common.custom_yaml as yaml
 from inginious.frontend.user_manager import UserManager
-from inginious.frontend.models import User
 
 HEADER = '\033[95m'
 INFO = '\033[94m'
@@ -168,11 +164,14 @@ class Installer:
         misc_opt = self.configure_misc()
         options.update(misc_opt)
 
-        self.try_mongodb_opts(options["mongo_opt"]["host"], options["mongo_opt"]["database"])
-        connect(options["mongo_opt"]["database"], host=options["mongo_opt"]["host"])
+        database = self.try_mongodb_opts(options["mongo_opt"]["host"], options["mongo_opt"]["database"])
+
+        self._display_header("BACKUP DIRECTORY")
+        backup_directory_opt = self.configure_backup_directory()
+        options.update(backup_directory_opt)
 
         self._display_header("AUTHENTIFICATION")
-        auth_opts = self.configure_authentication()
+        auth_opts = self.configure_authentication(database)
         options.update(auth_opts)
 
         self._display_info("You may want to add additional plugins to the configuration file.")
@@ -293,7 +292,7 @@ class Installer:
             "Docker for macOS?", True)
         if (response):
             self._display_info("If you use docker-machine on macOS, please see "
-                               "https://docs.inginious.org/en/latest/admin_doc/install_doc/troubleshooting.html#solving-problems-hangs-on-os-x-with-docker-machine-or-virtualbox-to-run-docker")
+                               "http://inginious.readthedocs.io/en/latest/install_doc/troubleshooting.html")
             return "local"
         else:
             self._display_info(
@@ -423,11 +422,11 @@ class Installer:
             with tempfile.TemporaryDirectory() as tmpdirname:
                 self._display_info("Downloading the base container source directory...")
                 if "dev" in __version__:
-                    tarball_url = "https://api.github.com/repos/INGInious/INGInious/tarball"
+                    tarball_url = "https://api.github.com/repos/UCL-INGI/INGInious/tarball"
                     containers_version = "dev (github branch master)"
                     dev = True
                 else:
-                    tarball_url = "https://api.github.com/repos/INGInious/INGInious/tarball/v" + __version__
+                    tarball_url = "https://api.github.com/repos/UCL-INGI/INGInious/tarball/v" + __version__
                     containers_version = __version__
                     dev = False
                 self._display_info("Downloading containers for version:" + containers_version)
@@ -513,6 +512,10 @@ class Installer:
 
         return options
 
+    def configure_backup_directory(self):
+        """ Configure backup directory """
+        return {"backup_directory": self._configure_directory("backups")}
+
     def ldap_plugin(self):
         """ Configures the LDAP plugin """
         name = self._ask_with_default("Authentication method name (will be displayed on the login page)", "LDAP")
@@ -543,7 +546,7 @@ class Installer:
             "require_cert": require_cert
         }
 
-    def configure_authentication(self):
+    def configure_authentication(self, database):
         """ Configure the authentication """
         options = {"plugins": [], "superadmins": []}
 
@@ -560,7 +563,12 @@ class Installer:
 
         password = self._ask_with_default("Enter the password of the superadmin", "superadmin")
 
-        User(username=username, realname=realname, email=email, password=UserManager.hash_password(password)).save()
+        database.users.insert_one({"username": username,
+                                   "realname": realname,
+                                   "email": email,
+                                   "password": UserManager.hash_password(password),
+                                   "bindings": {},
+                                   "language": "en"})
 
         options["superadmins"].append(username)
 
@@ -582,6 +590,10 @@ class Installer:
         options["session_parameters"] = {}
         options["session_parameters"]['timeout'] = self._ask_integer("How much time should a user stay connected, "
                                                                      "in seconds? The default is 86400, one day.", 86400)
+        options["session_parameters"]['ignore_change_ip'] = not self._ask_boolean("Should user be disconnected when "
+                                                                                  "their IP changes? It may prevent "
+                                                                                  "cookie stealing.",
+                                                                                  True)
         options["session_parameters"]['secure'] = self._ask_boolean("Do you plan to serve your INGInious instance only"
                                                                     " in HTTPS?", False)
         options["session_parameters"]['secret_key'] = hexlify(os.urandom(32)).decode('utf-8')

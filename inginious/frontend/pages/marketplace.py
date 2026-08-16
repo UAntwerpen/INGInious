@@ -5,15 +5,14 @@
 
 """ Course page """
 import sys
-from flask import session, request, redirect, render_template, url_for
+import flask
+from flask import redirect
 from werkzeug.exceptions import Forbidden
 
 from inginious.common.base import id_checker
-from inginious.common.exceptions import ImportCourseException
-from inginious.common.log import get_course_logger
-
-from inginious.frontend.courses import Course
-from inginious.frontend.marketplace_courses import get_all_marketplace_courses, get_marketplace_course
+from inginious.frontend.exceptions import ImportTasksetException
+from inginious.frontend.log import get_taskset_logger
+from inginious.frontend.marketplace_tasksets import get_all_marketplace_tasksets, get_marketplace_taskset
 from inginious.frontend.pages.utils import INGIniousAuthPage
 
 if sys.platform == 'win32':
@@ -30,7 +29,7 @@ class MarketplacePage(INGIniousAuthPage):
         """ GET request """
         # Change to teacher privilege when created
         if not self.user_manager.user_is_superadmin():
-            raise Forbidden(description=_("You don't have superadmin rights on this course."))
+            raise Forbidden(description=_("You don't have superadmin rights on this taskset."))
         return self.show_page()
 
     def POST_AUTH(self):  # pylint: disable=arguments-differ
@@ -39,63 +38,62 @@ class MarketplacePage(INGIniousAuthPage):
         if not self.user_manager.user_is_superadmin():
             raise Forbidden(description=_("You're not allowed to do that"))
 
-        user_input = request.form
+        user_input = flask.request.form
         errors = []
-        if "new_courseid" in user_input:
-            new_courseid = user_input["new_courseid"]
+        if "new_tasksetid" in user_input:
+            new_tasksetid = user_input["new_tasksetid"]
             try:
-                course = get_marketplace_course(user_input["courseid"])
-                import_course(course, new_courseid, session.username)
-            except ImportCourseException as e:
+                taskset = get_marketplace_taskset(user_input["tasksetid"])
+                import_taskset(taskset, new_tasksetid, self.user_manager.session_username(), self.taskset_factory)
+            except ImportTasksetException as e:
                 errors.append(str(e))
             except:
                 errors.append(_("User returned an invalid form."))
             if not errors:
-                return redirect(url_for("courseredirect", courseid=new_courseid))
+                return redirect(self.app.get_homepath() + "/taskset/{}".format(new_tasksetid))
         return self.show_page(errors)
 
     def show_page(self, errors=None):
-        """ Prepares and shows the course marketplace """
+        """ Prepares and shows the taskset marketplace """
         if errors is None:
             errors = []
-        courses = get_all_marketplace_courses()
-        return render_template("marketplace.html", courses=courses, errors=errors)
+        tasksets = get_all_marketplace_tasksets()
+        return self.template_helper.render("marketplace.html", tasksets=tasksets, errors=errors)
 
 
-def import_course(course, new_courseid, username):
-    if not id_checker(new_courseid):
-        raise ImportCourseException("Course with invalid name: " + new_courseid)
+def import_taskset(taskset, new_tasksetid, username, taskset_factory):
+    if not id_checker(new_tasksetid):
+        raise ImportTasksetException("Course with invalid name: " + new_tasksetid)
+    taskset_fs = taskset_factory.get_taskset_fs(new_tasksetid)
 
-    course_fs = Course(new_courseid, {"name": new_courseid}).get_fs()
-    if course_fs.exists("course.yaml") or course_fs.exists("course.json"):
-        raise ImportCourseException("Course with id " + new_courseid + " already exists.")
+    if taskset_fs.exists("taskset.yaml") or taskset_fs.exists("course.yaml") or taskset_fs.exists("course.json"):
+        raise ImportTasksetException("Course with id " + new_tasksetid + " already exists.")
 
     try:
-        git.clone(course.get_link(), course_fs.prefix)
+        git.clone(taskset.get_link(), taskset_fs.prefix)
     except:
-        raise ImportCourseException(_("Couldn't clone course into your instance"))
+        raise ImportTasksetException(_("Couldn't clone taskset into your instance"))
 
     try:
-        old_descriptor = Course.get(new_courseid).get_descriptor()
+        old_descriptor = taskset_factory.get_taskset_descriptor_content(new_tasksetid)
     except:
         old_descriptor ={}
 
-    new_descriptor = {"description": old_descriptor.get("description", ""),
-                      'admins': [username],
-                      "accessible": False,
-                      "tags": old_descriptor.get("tags", {})}
-    if "name" in old_descriptor:
-        new_descriptor["name"] = old_descriptor["name"] + " - " + new_courseid
-    else:
-        new_descriptor["name"] = new_courseid
-    if "toc" in old_descriptor:
-        new_descriptor["task_dispenser"] = "toc"
-        new_descriptor["dispenser_data"] = {"config": {}, "toc": old_descriptor["toc"]}
-
     try:
-        Course(new_courseid, new_descriptor).save()
+        new_descriptor = {"description": old_descriptor.get("description", ""),
+                          'admins': [username],
+                          "accessible": False,
+                          "tags": old_descriptor.get("tags", {})}
+        if "name" in old_descriptor:
+            new_descriptor["name"] = old_descriptor["name"] + " - " + new_tasksetid
+        else:
+            new_descriptor["name"] = new_tasksetid
+        if "toc" in old_descriptor:
+            new_descriptor["toc"] = old_descriptor["toc"]
+        taskset_factory.update_taskset_descriptor_content(new_tasksetid, new_descriptor)
     except:
-        raise ImportCourseException(_("An error occur while editing the course description"))
+        taskset_factory.delete_taskset(new_tasksetid)
+        raise ImportTasksetException(_("An error occur while editing the taskset description"))
 
-    get_course_logger(new_courseid).info("Course %s cloned from the marketplace.", new_courseid)
+    get_taskset_logger(new_tasksetid).info("Course %s cloned from the marketplace.", new_tasksetid)
 

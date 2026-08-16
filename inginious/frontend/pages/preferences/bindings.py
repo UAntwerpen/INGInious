@@ -4,10 +4,11 @@
 # more information about the licensing of this file.
 
 """ Auth bindings page """
-from flask import  session, request, redirect, render_template, url_for
+import flask
+from flask import redirect
 
 from inginious.frontend.pages.utils import INGIniousAuthPage
-from inginious.frontend.models import User
+
 
 class BindingsPage(INGIniousAuthPage):
     """ Bindings page for DB-authenticated users"""
@@ -15,9 +16,9 @@ class BindingsPage(INGIniousAuthPage):
     def GET_AUTH(self):  # pylint: disable=arguments-differ
         """ GET request """
         auth_methods = self.user_manager.get_auth_methods()
-        user_data = self.user_manager.get_user_info(session.username)
+        user_data = self.user_manager.get_user_info(self.user_manager.session_username())
         bindings = user_data.bindings
-        return render_template("preferences/bindings.html", bindings=bindings,
+        return self.template_helper.render("preferences/bindings.html", bindings=bindings,
                                            auth_methods=auth_methods, msg="", error=False)
 
     def POST_AUTH(self):  # pylint: disable=arguments-differ
@@ -25,8 +26,12 @@ class BindingsPage(INGIniousAuthPage):
         msg = ""
         error = False
 
-        user_data = User.objects.get(username=session.username)
-        user_input = request.form
+        user_data = self.database.users.find_one({"username": self.user_manager.session_username()})
+
+        if not user_data:
+            raise self.app.notfound(message=_("User doesn't exist."))
+
+        user_input = flask.request.form
         auth_methods = self.user_manager.get_auth_methods()
 
         if "auth_binding" in user_input:
@@ -35,13 +40,13 @@ class BindingsPage(INGIniousAuthPage):
             if auth_binding not in auth_methods.keys():
                 error = True
                 msg = _("Incorrect authentication binding.")
-            elif auth_binding not in user_data.bindings:
-                return redirect(url_for("authenticationpage", auth_id=auth_binding))
+            elif auth_binding not in user_data.get("bindings", {}):
+                return redirect("/auth/signin/" + auth_binding)
         elif "revoke_auth_binding" in user_input:
             auth_id = user_input["revoke_auth_binding"]
-            error, msg = self.user_manager.revoke_binding(session.username, auth_id)
+            error, msg = self.user_manager.revoke_binding(self.user_manager.session_username(), auth_id)
 
-        bindings = user_data.bindings
+        bindings = user_data.get("bindings", {})
 
-        return render_template("preferences/bindings.html", bindings=bindings,
+        return self.template_helper.render("preferences/bindings.html", bindings=bindings,
                                            auth_methods=auth_methods, msg=msg, error=error)

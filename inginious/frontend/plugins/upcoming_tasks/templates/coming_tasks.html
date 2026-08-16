@@ -7,7 +7,7 @@
 {% block navbar %}
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item active"><a href="#"><i class="fa fa-th-list"></i> {{ _("Upcoming Tasks") }}
+            <li class="breadcrumb-item active"><a href="#"><i class="fa fa-graduation-cap"></i> {{ _("Upcoming Tasks") }}
                 <span class="sr-only">{{ _("(current)") }}</span></a>
             </li>
         </ol>
@@ -20,8 +20,8 @@
         {{ _("This page lists the coming tasks ordered on deadlines for courses you are registered in.") }}
     </div>
     <div class="list-group mb-3">
-        <a class="list-group-item list-group-item-action list-group-item-info" href="{{ url_for('courselistpage') }}">
-            <i class="fa fa-fw fa-th-list"></i>
+        <a class="list-group-item list-group-item-action list-group-item-info" href="{{ get_homepath() }}/courselist">
+            <i class="fa fa-fw fa-graduation-cap"></i>
             {{ _("Course list") }}
         </a>
     </div>
@@ -42,8 +42,8 @@
                         {% else %}
                             list-group-item-danger
                         {% endif %}"
-                        href="{{ url_for('taskpage', courseid=submission['courseid'], taskid=submission['taskid']) }}">
-                        <b>{{ course.get_name(session.language) }}</b>: {{ submission["task"].get_name(session.language) }}
+                        href="{{ get_homepath() }}/course/{{submission['courseid']}}/{{submission['taskid']}}">
+                        <b>{{ course.get_name(user_manager.session_language()) }}</b>: {{ submission["task"].get_name(user_manager.session_language()) }}
                     </a>
                 {% endif %}
             {% endfor %}
@@ -51,9 +51,7 @@
             <a class="list-group-item list-group-item-action disabled submission-empty">{{ _("No submissions") }}</a>
         {% endif %}
     </div>
-    {% for entry in plugin_manager.call_hook('main_menu') %}
-        {{ entry }}
-    {% endfor %}
+    {{ template_helper.call('main_menu', template_helper=template_helper) | safe }}
 {% endblock %}
 
 

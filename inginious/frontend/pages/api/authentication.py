@@ -6,7 +6,6 @@
 """ Authentication """
 
 import flask
-from flask import session
 
 from inginious.frontend.pages.api._api_page import APIPage, APIInvalidArguments
 
@@ -20,8 +19,8 @@ class APIAuthentication(APIPage):
         """
             Returns {"authenticated": false} or {"authenticated": true, "username": "your_username"} (always 200 OK)
         """
-        if session.loggedin:
-            return 200, {"authenticated": True, "username": session.username}
+        if self.user_manager.session_logged_in():
+            return 200, {"authenticated": True, "username": self.user_manager.session_username()}
         else:
             return 200, {"authenticated": False}
 
@@ -44,7 +43,7 @@ class APIAuthentication(APIPage):
 
         try:
             if self.user_manager.auth_user(user_input["login"].strip(), user_input["password"]) is not None:
-                    return 200, {"status": "success", "username": session.username}
+                    return 200, {"status": "success", "username": self.user_manager.session_username()}
         except:
             pass
         return 403, {"status": "error"}

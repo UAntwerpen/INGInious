@@ -4,10 +4,12 @@
 # more information about the licensing of this file.
 
 """ Profile page """
-from flask import current_app, session, request, redirect, render_template, url_for
+import flask
+from flask import redirect
 from werkzeug.exceptions import Forbidden
 
 from inginious.frontend.pages.utils import INGIniousAuthPage
+
 
 class DeletePage(INGIniousAuthPage):
     """ Delete account page for DB-authenticated users"""
@@ -17,7 +19,7 @@ class DeletePage(INGIniousAuthPage):
         error = False
         msg = ""
 
-        username = session.username
+        username = self.user_manager.session_username()
         result = self.user_manager.delete_user(username, data.get("delete_email", ""))
 
         if not result:
@@ -29,22 +31,26 @@ class DeletePage(INGIniousAuthPage):
 
     def GET_AUTH(self):  # pylint: disable=arguments-differ
         """ GET request """
-        if not current_app.config.get("ALLOW_DELETION"):
+        userdata = self.database.users.find_one({"username": self.user_manager.session_username()})
+
+        if not userdata or not self.app.allow_deletion:
             raise Forbidden(description=_("User unavailable or deletion is forbidden."))
 
-        return render_template("preferences/delete.html", msg="", error=False)
+        return self.template_helper.render("preferences/delete.html", msg="", error=False)
 
     def POST_AUTH(self):  # pylint: disable=arguments-differ
         """ POST request """
-        if not current_app.config.get("ALLOW_DELETION"):
+        userdata = self.database.users.find_one({"username": self.user_manager.session_username()})
+
+        if not userdata or not self.app.allow_deletion:
             raise Forbidden(description=_("User unavailable or deletion forbidden."))
 
         msg = ""
         error = False
-        data = request.form
+        data = flask.request.form
         if "delete" in data:
             msg, error = self.delete_account(data)
             if not error:
-                return redirect(url_for("indexpage"))
+                return redirect("/index")
 
-        return render_template("preferences/delete.html", msg=msg, error=error)
+        return self.template_helper.render("preferences/delete.html", msg=msg, error=error)

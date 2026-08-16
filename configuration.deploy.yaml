@@ -4,41 +4,13 @@ local-config: {}
 mongo_opt:
     database: INGInious
     host: db
-plugins:
-  - plugin_module: uantwerpen.plugins.inginious-download-submissions
-  - plugin_module: uantwerpen.plugins.inginious-extra-test
-  - plugin_module: uantwerpen.plugins.inginious-run-code
-  - plugin_module: inginious.frontend.plugins.auth.saml2_auth
-    id: "saml2"
-    strict: true
-    sp:
-      entityId: "https://inginious.uantwerpen.be/auth/saml2/metadata"
-      assertionConsumerService:
-        url: "https://inginious.uantwerpen.be/auth/callback/saml2"
-        binding: "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-      x509cert: ""
-      privateKey: ""
-    idp:
-      entityId: "https://sts.windows.net/792e08fb-2d54-4a8e-af72-202548136ef6/"
-      singleSignOnService:
-        url: "https://login.microsoftonline.com/792e08fb-2d54-4a8e-af72-202548136ef6/saml2"
-        binding: "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
-      singleLogoutService:
-        url: "https://login.microsoftonline.com/792e08fb-2d54-4a8e-af72-202548136ef6/saml2"
-        binding: "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
-      x509cert: "MIIC8DCCAdigAwIBAgIQYXtpM4GMXZpIXGk7PL5hbjANBgkqhkiG9w0BAQsFADA0MTIwMAYDVQQDEylNaWNyb3NvZnQgQXp1cmUgRmVkZXJhdGVkIFNTTyBDZXJ0aWZpY2F0ZTAeFw0yNDA3MzExMTAyMThaFw0yNzA3MzExMTAyMThaMDQxMjAwBgNVBAMTKU1pY3Jvc29mdCBBenVyZSBGZWRlcmF0ZWQgU1NPIENlcnRpZmljYXRlMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzh3n3vOSgCxTycbDSZG/UvoXL5k4NEA6i7PhrahsoN6K8anYCegXE0uehy0M2dH8B7OLRgxl/iUhM2E1nBJa4sU60drpNVAsTo5ZBOEJCXMhmWL4/z3VxJjBjX6T3UrhaCU+vO5l5qNnF/xHbqSA9SUcDOG9M/GMR1ZjTfB549BgE8Gft7H3nGgwRJO7+6bKfDsPTWAUzNXVOUy6At9togTF1e+3xQB7Axpg1OokuLEaeHIvx5/ZEBX+bXhmgKIsbSfbfLzEVemftbai3Dnuv/CbuhoV9/8zndvqHtUJ9yCnXWCHX5ZnWwHNhFn/03jj2weK92xjZF7Aq1cgnLzPHQIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQAX0yMesagbBYpG3ei6oBcbrAHFXk9vWwG0EYUW4EaM+sfY45RhPpEtK0kIN9DoXsn7aO5PbXyDG5Zjclt0vszRNpir/s7lHyes2g0gLwG/a67aq3pf9/dE1r6TV90UiTKV7XFjRNgqwE8QC8prBL6oQcYpqMTWBNYrhQHbPFwTdA6cXZJVnkUs1fWDqNf2mDtlhRM8OlzMidCnrSf2U0ZxnFedkuB6ajPJzxmJNxhQCP1+i0tfgIn8M1wiQqDJAi0Wy6eIDEY3vuv9SbsiTkZlCw4ZHmayzZ52yRmA2v27LoW1RoElpyBn9FHMIj6LIpx6/9P+YlA0sdThBOk8fOFF"
-    security:
-      requestedAuthnContext: false
-    attributes:
-      cn: "http://schemas.microsoft.com/identity/claims/displayname"
-      uid: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"
-      email: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+plugins: []
 session_parameters:
+    ignore_change_ip: false
     secret_key: 96f4628a2e4d0ce26b6352713f8ac8359b838f4800f1972790622899664bd0f4
     secure: false
     timeout: 86400
 superadmins:
-    - tapers
-    - thofkens
-tasks_directory: uantwerpen/courses
+- superadmin
+tasks_directory: /inginious/tasks
 use_minified_js: true

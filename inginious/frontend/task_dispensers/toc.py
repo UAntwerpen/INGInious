@@ -3,16 +3,16 @@
 # This file is part of INGInious. See the LICENSE and the COPYRIGHTS files for
 # more information about the licensing of this file.
 import copy
+import inginious
 from collections import OrderedDict
 
 from functools import reduce
 from operator import concat
-
-from flask import render_template
 from inginious.frontend.task_dispensers.util import check_toc, parse_tasks_config, check_task_config,\
     SectionsList, SectionConfigItem, GroupSubmission, Weight, SubmissionStorage, EvaluationMode, Categories, \
     SubmissionLimit, Accessibility
 from inginious.frontend.task_dispensers import TaskDispenser
+from inginious.frontend.accessible_time import AccessibleTime
 
 
 class TableOfContents(TaskDispenser):
@@ -20,7 +20,7 @@ class TableOfContents(TaskDispenser):
     legacy_fields = {"weight": Weight, "submission_limit": SubmissionLimit, "stored_submissions": SubmissionStorage,
                      "groups": GroupSubmission, "evaluate": EvaluationMode, "accessible": Accessibility, "categories": Categories}
 
-    def __init__(self, task_list_func, dispenser_data, course_id):
+    def __init__(self, task_list_func, dispenser_data, database, element_id):
         # Check dispenser data structure
         dispenser_data = dispenser_data or {"toc": {}, "config": {}}
 
@@ -33,7 +33,7 @@ class TableOfContents(TaskDispenser):
         if not isinstance(dispenser_data, dict) or "toc" not in dispenser_data:
             raise Exception("Invalid dispenser data structure")
 
-        TaskDispenser.__init__(self, task_list_func, dispenser_data, course_id)
+        TaskDispenser.__init__(self, task_list_func, dispenser_data, database, element_id)
         self._toc = SectionsList(dispenser_data.get("toc", {}))
         self._task_config = dispenser_data.get("config", {})
         parse_tasks_config(self._task_list_func().keys(), self.config_items, self._task_config)
@@ -70,7 +70,7 @@ class TableOfContents(TaskDispenser):
 
     def get_accessibilities(self, taskids, usernames):
         """  Get the accessible time of this task """
-        return {username: {taskid: Accessibility.get_value(self._task_config.get(taskid, {}))
+        return {username: {taskid: AccessibleTime(Accessibility.get_value(self._task_config.get(taskid, {})))
                            for taskid in taskids } for username in usernames}
 
     def get_categories(self, taskid):
@@ -82,65 +82,70 @@ class TableOfContents(TaskDispenser):
         taskids = self._toc.get_tasks()
         return set(reduce(concat, [self.get_categories(taskid) for taskid in taskids])) if len(taskids) else []
 
-    def get_course_grades(self, user_tasks, usernames):
+    def get_course_grades(self, usernames):
         """ Returns the grade of a user for the current course"""
         taskids = list(self._task_list_func().keys())
         task_list = self.get_accessibilities(taskids, usernames)
+        user_tasks = self._database.user_tasks.find(
+            {"username": {"$in": usernames}, "courseid": self._element_id, "taskid": {"$in": taskids}})
 
         tasks_weight = {taskid: self.get_weight(taskid) for taskid in taskids}
         tasks_scores = {username: [0.0, 0.0] for username in usernames}
-
-        for username in usernames:
-            for taskid in taskids:
-                if task_list[username][taskid].after_start():
-                    tasks_scores[username][1] += tasks_weight[taskid]
 
         for user_task in user_tasks:
             username = user_task["username"]
             if task_list[username][user_task["taskid"]].after_start():
                 weighted_score = user_task["grade"] * tasks_weight[user_task["taskid"]]
                 tasks_scores[username][0] += weighted_score
+                tasks_scores[username][1] += tasks_weight[user_task["taskid"]]
 
         return {username: round(tasks_scores[username][0]/tasks_scores[username][1])
                 if tasks_scores[username][1] > 0 else 0 for username in usernames}
 
     def get_dispenser_data(self):
         """ Returns the task dispenser data structure """
-        return self._toc
+        return self._dispenser_data
 
-    def render_edit(self, course, task_data, task_errors):
+    def render_edit(self, template_helper, element, task_data, task_errors):
         """ Returns the formatted task list edition form """
         config_fields = {
             "closed": SectionConfigItem(_("Closed by default"), "checkbox", False),
             "hidden_if_empty": SectionConfigItem(_("Hidden if empty"),"checkbox",False)
         }
-        return render_template("course_admin/task_dispensers/toc.html", course=course,
-                                      course_structure=self._toc, tasks=task_data, task_errors=task_errors, 
-                                      config_fields=config_fields, dispenser_config=self._task_config)
 
-    def render(self, course, tasks_data, tag_list, username):
+        taskset = element if isinstance(element, inginious.frontend.tasksets.Taskset) else None
+        course = element if isinstance(element, inginious.frontend.courses.Course) else None
+
+        return template_helper.render("task_dispensers_admin/toc.html", element=element, course=course, taskset=taskset,
+                                      dispenser_structure=self._toc, dispenser_config=self._task_config, tasks=task_data,
+                                      task_errors=task_errors, config_fields=config_fields)
+
+    def render(self, template_helper, course, tasks_data, tag_list, username):
         """ Returns the formatted task list"""
         accessibilities = course.get_task_dispenser().get_accessibilities(self._task_list_func(),[username])
-        return render_template("task_dispensers/toc.html", course=course, tasks=self._task_list_func(),
+        return template_helper.render("task_dispensers/toc.html", course=course, tasks=self._task_list_func(),
                                       tasks_data=tasks_data, tag_filter_list=tag_list, sections=self._toc,accessibilities=accessibilities)
 
     def check_dispenser_data(self, dispenser_data):
         """ Checks the dispenser data as formatted by the form from render_edit function """
         new_toc = dispenser_data
-        result, errors = check_toc(new_toc.get("toc", {}))
-        if result:
-            result, errors = check_task_config(result.get_tasks(), self.config_items, new_toc.get("config", {}))
-        if result is not None and new_toc:
+        valid, errors = check_toc(new_toc.get("toc", {}))
+        if valid:
+            valid, errors = check_task_config(self._task_list_func().keys(), self.config_items, new_toc.get("config", {}))
+        if valid and new_toc:
             new_toc["imported"] = dispenser_data.get("imported", False) or self._dispenser_data.get("imported", False)
-        return new_toc if result is not None else None, errors
+        return new_toc if valid else None, errors
 
     def get_ordered_tasks(self):
         """ Returns a serialized version of the tasks structure as an OrderedDict"""
         tasks = self._task_list_func()
         return OrderedDict([(taskid, tasks[taskid]) for taskid in self._toc.get_tasks() if taskid in tasks])
 
-    def has_legacy_tasks(self):
+    def has_legacy_tasks(self, ignore_imported=False):
         """ Checks if the task files contains dispenser settings """
+        if not ignore_imported and self._dispenser_data.get("imported", False):
+            return False
+
         for taskid, task in self._task_list_func().items():
             if task.get_dispenser_settings(self.legacy_fields):
                 return True
@@ -151,8 +156,8 @@ class TableOfContents(TaskDispenser):
         dispenser_data = copy.deepcopy(self._dispenser_data)
         for taskid, task in self._task_list_func().items():
             try:
-                # Preserve dispenser settings and only overwrite imported data
-                dispenser_data["config"][taskid].update(task.get_dispenser_settings(self.legacy_fields))
+                dispenser_data["config"][taskid] = task.get_dispenser_settings(self.legacy_fields)
             except Exception as e:
                 raise Exception(f"In task {taskid} : {e}")
+        dispenser_data["imported"] = True
         return dispenser_data

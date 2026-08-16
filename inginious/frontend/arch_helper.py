@@ -52,26 +52,27 @@ async def _restart_on_cancel(logger, agent):
             logger.exception("Restarting agent")
             pass
 
-def create_arch(configuration, context):
+def create_arch(configuration, tasks_fs, context, taskset_factory):
     """ Helper that can start a simple complete INGInious arch locally if needed, or a client to a remote backend.
     Intended to be used on command line, makes uses of exit() and the logger inginious.frontend.
     :param configuration: configuration dict
+    :param tasks_fs: FileSystemProvider to the courses/tasks folders
     :param context: a ZMQ context
+    :param taskset_factory: The course factory to be used by the frontend
     :param is_testing: boolean
     :return: a Client object
     """
 
     logger = logging.getLogger("inginious.frontend")
 
-    backend_link = configuration["BACKEND"]
+    backend_link = configuration.get("backend", "local")
     if backend_link == "local":
         logger.info("Starting a simple arch (backend, docker-agent and mcq-agent) locally")
 
-        local_config = configuration["LOCAL-CONFIG"]
+        local_config = configuration.get("local-config", {})
         concurrency = local_config.get("concurrency", multiprocessing.cpu_count())
         debug_host = local_config.get("debug_host", None)
         debug_ports = local_config.get("debug_ports", None)
-        debugger = local_config.get("debugger", False)
         tmp_dir = local_config.get("tmp_dir", "./agent_tmp")
 
         if debug_ports is not None:
@@ -93,12 +94,17 @@ def create_arch(configuration, context):
 
         client = Client(context, "inproc://backend_client")
         backend = Backend(context, "inproc://backend_agent", "inproc://backend_client")
-        agent_docker = DockerAgent(context, "inproc://backend_agent", "Docker - Local agent", concurrency, debug_host, debug_ports, debugger, tmp_dir, ssh_allowed=True)
-        agent_mcq = MCQAgent(context, "inproc://backend_agent", "MCQ - Local agent", 1)
+        agent_docker = DockerAgent(context, "inproc://backend_agent", "Docker - Local agent", concurrency, tasks_fs, debug_host, debug_ports, tmp_dir, ssh_allowed=True)
+        agent_mcq = MCQAgent(context, "inproc://backend_agent", "MCQ - Local agent", 1, tasks_fs, taskset_factory.get_task_factory().get_problem_types())
 
         asyncio.ensure_future(_restart_on_cancel(logger, agent_docker))
         asyncio.ensure_future(_restart_on_cancel(logger, agent_mcq))
         asyncio.ensure_future(_restart_on_cancel(logger, backend))
+    elif backend_link in ["remote", "remote_manuel", "docker_machine"]: #old-style config
+        logger.error("Value '%s' for the 'backend' option is configuration.yaml is not supported anymore. \n"
+                     "Have a look at the 'update' section of the INGInious documentation in order to upgrade your configuration.yaml", backend_link)
+        exit(1)
+        return None #... pycharm returns a warning else :-(
     else:
         logger.info("Creating a client to backend at %s", backend_link)
         client = Client(context, backend_link)

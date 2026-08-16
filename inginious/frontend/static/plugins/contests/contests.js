@@ -8,7 +8,7 @@ $(function()
 
 function contest_starting_time()
 {
-	$(this).countdown(new Date($(this).attr('starts-at'))).on('update.countdown', function(event)
+	$(this).countdown($(this).attr('starts-at')).on('update.countdown', function(event)
 	{
 		var format = '%H:%M:%S';
 		if(event.offset.totalDays > 0) {
@@ -24,7 +24,7 @@ function contest_starting_time()
 
 function contest_remaining_time()
 {
-	$(this).countdown(new Date($(this).attr('ends-at'))).on('update.countdown', function(event)
+	$(this).countdown($(this).attr('ends-at')).on('update.countdown', function(event)
 	{
 		var format = '%H:%M:%S';
 		if(event.offset.totalDays > 0) {
@@ -39,7 +39,7 @@ function contest_remaining_time()
 
 function contest_blackout_time()
 {
-	$(this).countdown(new Date($(this).attr('blackout-at'))).on('update.countdown', function(event)
+	$(this).countdown($(this).attr('blackout-at')).on('update.countdown', function(event)
 	{
 		var format = '%H:%M:%S';
 		if(event.offset.totalDays > 0) {
@@ -53,12 +53,5 @@ function contest_blackout_time()
 }
 
 function dispenser_structure_contest() {
-	var course_structure = dispenser_util_structure()
-	course_structure['settings'] = {}
-
-    $("#task_dispenser_settings_form input").each(function () {
-        course_structure['settings'][$(this).attr("name")] = $(this).is(":checkbox") ? $(this).is(":checked") : $(this).val();
-    });
-
-    return JSON.stringify(course_structure);
+    return dispenser_util_structure();
 }

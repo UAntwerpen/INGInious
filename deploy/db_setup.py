@@ -1,5 +1,3 @@
-import sys
-
 from pymongo import MongoClient
 from gridfs import GridFS
 
@@ -43,17 +41,10 @@ if __name__ == '__main__':
 
     database = try_mongodb_opts('db')
 
-    # Test whether the superadmin is already set.
-    if database.users.find_one({"username": username}) is not None:
-        print('Superadmin user is already set in the database.')
-        sys.exit()
-
-    # Set new superadmin user.
     database.users.insert_one({"username": username,
-                               "realname": realname,
-                               "email": email,
-                               "password": UserManager.hash_password(password),
-                               "bindings": {},
-                               "language": "en",
-                               "code_indentation": "4"})
+                                       "realname": realname,
+                                       "email": email,
+                                       "password": UserManager.hash_password(password),
+                                       "bindings": {},
+                                       "language": "en"})
     print('Superadmin user added!')

@@ -4,9 +4,7 @@
 {% extends "layout.html" %}
 {% block title %}{{_("Users Administration") }}{% endblock %}
 {% block column %}
-    {% for entry in plugin_manager.call_hook('main_menu') %}
-        {{ entry }}
-    {% endfor %}
+    {{ template_helper.call('main_menu', template_helper=template_helper) | safe }}
 {% endblock %}
 {% block navbar %}
     <nav aria-label="breadcrumb">
@@ -68,7 +66,7 @@
                                     data-type="single" data-toggle="modal"
                                     data-target="#binding_modal"
                                     class="btn btn-secondary binding_user" title="{{ _('Bindings') }}"><i class="fa fa-cloud"></i></button>
-                        {% if all_users[user]["username"] != session.username %}
+                        {% if all_users[user]["username"] != user_manager.session_username() %}
                             {% if not all_users[user]["activated"] %}
                                 <button type="button" data-username="{{all_users[user]['username']}}"
                                     data-type="single" data-toggle="modal"

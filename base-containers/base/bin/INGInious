@@ -20,32 +20,11 @@ import asyncio
 import struct
 import zmq
 import zmq.asyncio
-import pydevd_pycharm
-
-
-debug_server_unavailable = False
-if os.environ["DEBUGGER"] == "True":
-    print("Starting in debug mode, waiting for pycharm to connect...")
-    try:
-        pydevd_pycharm.settrace(
-            'host.docker.internal',
-            port=5678,
-            stdout_to_server=True,
-            stderr_to_server=True,
-            suspend=False
-        )
-    except Exception as e:
-        debug_server_unavailable = True
 
 
 ELF_MAGIC = b"\x7F\x45\x4C\x46"
 SHEBANG_MAGIC = b"\x23\x21"
 
-background_tasks = set()
-def start_as_background_task(loop, fun):
-    task = loop.create_task(fun)
-    background_tasks.add(task)
-    task.add_done_callback(background_tasks.discard)
 
 class INGIniousMainRunner:
     def __init__(self, ctx, loop):
@@ -138,8 +117,7 @@ class INGIniousMainRunner:
     async def serve(self):
         self._logger.info("Starting serve")
         stdin_sr, self.stdout = await self.stdio()
-        start_as_background_task(self._loop, self.handle_stdin(stdin_sr))
-
+        self._loop.create_task(self.handle_stdin(stdin_sr))
 
         self.intern = self._ctx.socket(zmq.ROUTER)
         self.intern.bind("ipc:///sockets/main.sock")
@@ -180,7 +158,7 @@ class INGIniousMainRunner:
         self._logger.info("received message %s", message["type"])
         try:
             if message["type"] == "start":
-                start_as_background_task(self._loop, self.start_cmd(message))
+                self._loop.create_task(self.start_cmd(message))
             if message["type"] == "run_student_started":
                 if message["socket_id"] in self.running_student_container:
                     addr = self.running_student_container[message["socket_id"]]
@@ -353,25 +331,6 @@ class INGIniousMainRunner:
 
         ok_to_start = True
 
-        # Check cgroupsv2 OOM policy
-        oom_group_path = "/sys/fs/cgroup/memory.oom.group"
-        if os.path.exists(oom_group_path):
-            with open(oom_group_path, "r", encoding="utf-8") as f:
-                oom_group = f.read().strip()
-            if oom_group == "0":
-                # Some container runtimes do not expose this as 1. Keep strict mode opt-in.
-                enforce_oom_group = os.environ.get("INGINIOUS_ENFORCE_OOM_GROUP", "false").lower() in ["1", "true", "yes"]
-                if enforce_oom_group:
-                    inginious_container_api.feedback.set_global_result('crash')
-                    inginious_container_api.feedback.set_global_feedback(
-                        "Cgroup flag memory.oom.group is not set. Please refer to the setup documentation."
-                    )
-                    ok_to_start = False
-                else:
-                    self._logger.warning(
-                        "Cgroup flag memory.oom.group is 0; continuing because INGINIOUS_ENFORCE_OOM_GROUP is disabled"
-                    )
-
         # Add some elements to /etc/hosts and /etc/resolv.conf if needed
         system_files = {"hosts": ("/etc/hosts", True), "resolv.conf": ("/etc/resolv.conf", False)}
         for name, (spath, append) in system_files.items():
@@ -429,9 +388,6 @@ class INGIniousMainRunner:
                 inginious_container_api.feedback.set_global_result('crash')
                 inginious_container_api.feedback.set_global_feedback('[SSH Debug] Nobody connected to the SSH server.')
             stdout, stderr = b"", b""
-
-        if os.environ["DEBUGGER"] and debug_server_unavailable:
-            stderr += b"[DEBUG] WARNING : Debug server was unavailable.\n"
 
         # Produce feedback
         feedback = inginious_container_api.feedback.get_feedback()

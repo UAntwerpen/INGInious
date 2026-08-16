@@ -1,5 +1,5 @@
 // CodeMirror, copyright (c) by Marijn Haverbeke and others
-// Distributed under an MIT license: https://codemirror.net/5/LICENSE
+// Distributed under an MIT license: http://codemirror.net/LICENSE
 
 (function(mod) {
   if (typeof exports == "object" && typeof module == "object") // CommonJS
@@ -50,7 +50,7 @@
   }
 
   function getTagRegexp(tagName, anchored) {
-    return new RegExp((anchored ? "^" : "") + "<\/\\s*" + tagName + "\\s*>", "i");
+    return new RegExp((anchored ? "^" : "") + "<\/\s*" + tagName + "\s*>", "i");
   }
 
   function addTags(from, to) {
@@ -74,8 +74,7 @@
       name: "xml",
       htmlMode: true,
       multilineTagIndentFactor: parserConfig.multilineTagIndentFactor,
-      multilineTagIndentPastTag: parserConfig.multilineTagIndentPastTag,
-      allowMissingTagName: parserConfig.allowMissingTagName,
+      multilineTagIndentPastTag: parserConfig.multilineTagIndentPastTag
     });
 
     var tags = {};
@@ -106,7 +105,7 @@
           return maybeBackup(stream, endTag, state.localMode.token(stream, state.localState));
         };
         state.localMode = mode;
-        state.localState = CodeMirror.startState(mode, htmlMode.indent(state.htmlState, "", ""));
+        state.localState = CodeMirror.startState(mode, htmlMode.indent(state.htmlState, ""));
       } else if (state.inTag) {
         state.inTag += stream.current()
         if (stream.eol()) state.inTag += " "
@@ -136,7 +135,7 @@
 
       indent: function (state, textAfter, line) {
         if (!state.localMode || /^\s*<\//.test(textAfter))
-          return htmlMode.indent(state.htmlState, textAfter, line);
+          return htmlMode.indent(state.htmlState, textAfter);
         else if (state.localMode.indent)
           return state.localMode.indent(state.localState, textAfter, line);
         else

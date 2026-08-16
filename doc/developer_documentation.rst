@@ -11,7 +11,6 @@ Extensions
    dev_doc/extensions_doc/how_to_extend
    dev_doc/extensions_doc/i18n
    dev_doc/extensions_doc/plugins
-   dev/doc/extensions_doc/taskless_jobs
 
 Agents
 ``````

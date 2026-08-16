@@ -5,19 +5,20 @@
 
 {% set user_realname= user_manager.get_user_realname(username) %}
 
-{% block title %} {{ user_realname }} - {{ course.get_name(session.language) }}{% endblock %}
+{% block title %} {{ user_realname }} - {{ course.get_name(user_manager.session_language()) }}{% endblock %}
 
 {% block column %}
-    {% with current='students' %} {% include 'course_admin/menu.html' %} {% endwith %}
+{{ template_helper.call('course_admin_menu',course=course,current='students') | safe }}
 {% endblock %}
 
 {% block navbar %}
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{url_for('coursepage', courseid=course.get_id())}}">{{course.get_name(session.language)}}</a></li>
-            <li class="breadcrumb-item"><a href="{{url_for('courseredirect', courseid=course.get_id())}}" title="{{ _('Administration') }}" data-toggle="tooltip" data-placement="bottom">
+            <li class="breadcrumb-item"><a href="{{ get_homepath() }}/mycourses" title="{{ _('My courses') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-graduation-cap"></i></a></li>
+            <li class="breadcrumb-item"><a href="{{get_homepath()}}/course/{{course.get_id()}}">{{course.get_name(user_manager.session_language())}}</a></li>
+            <li class="breadcrumb-item"><a href="{{get_homepath()}}/admin/{{course.get_id()}}" title="{{ _('Administration') }}" data-toggle="tooltip" data-placement="bottom">
                 <i class="fa fa-user-secret"></i></a></li>
-            <li class="breadcrumb-item"><a href="{{url_for('coursestudentlistpage', courseid=course.get_id())}}" title="{{ _('Students') }}" data-toggle="tooltip" data-placement="bottom">
+            <li class="breadcrumb-item"><a href="{{get_homepath()}}/admin/{{course.get_id()}}/students" title="{{ _('Students') }}" data-toggle="tooltip" data-placement="bottom">
                 <i class="fa fa-user"></i></a></li>
 
             <li class="breadcrumb-item active"><a href="#">{{ user_realname }} <span class="sr-only">{{ _("(current)") }}</span></a></li>
@@ -36,9 +37,9 @@
                 <th>{{_("# submissions")}}</th>
                 <th>
                     <div class="btn-group btn-group-sm" role="group">
-                        <a href="{{url_for('coursestudentinfopage', courseid=course.get_id(), username=username, csv='')}}" class="btn btn-info btn-xs"
+                        <a href="{{get_homepath()}}/admin/{{course.get_id()}}/student/{{username}}?csv" class="btn btn-info btn-xs"
                            title="{{ _('Download CSV') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-table"></i></a>
-                        <a href="{{url_for('coursesubmissionspage', courseid=course.get_id(), users=username)}}"
+                        <a href="{{get_homepath()}}/admin/{{course.get_id()}}/submissions?users={{ username }}"
                            class="btn btn-secondary" title="{{ _('View all submissions') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa
                            fa-search"></i></a>
                     </div>
@@ -69,17 +70,17 @@
                     {% elif task["status"] == "notattempted" %}
                         {{_("Not attempted (viewed)")}}
                     {% elif task["status"] == "succeeded" %}
-                        <a href="{{url_for('submissionpage', submissionid=task['submissionid'])}}" title="{{ _('View evaluation submission') }}"
+                        <a href="{{get_homepath()}}/submission/{{task['submissionid']}}" title="{{ _('View evaluation submission') }}"
                             data-toggle="tooltip" data-placement="bottom">{{_("Succeeded")}} ({{task["grade"]}}%)</a>
                     {% else %}
-                        <a href="{{url_for('submissionpage', submissionid=task['submissionid'])}}" title="{{ _('View evaluation submission') }}"
+                        <a href="{{get_homepath()}}/submission/{{task['submissionid']}}" title="{{ _('View evaluation submission') }}"
                             data-toggle="tooltip" data-placement="bottom">{{_("Failed")}} ({{task["grade"]}}%)</a>
                     {% endif %}
                 </td>
                 <td>{{ task["tried"] }}</td>
                 <td>
                     <div class="btn-group btn-group-sm" role="group">
-                        <a href="{{url_for('coursesubmissionspage', courseid=course.get_id(), users=username, tasks=task['taskid'])}}" class="btn btn-secondary" title="{{ _('View all submissions') }}"
+                        <a href="{{get_homepath()}}/admin/{{course.get_id()}}/submissions{{ task['url'] }}" class="btn btn-secondary" title="{{ _('View all submissions') }}"
                            data-toggle="tooltip" data-placement="bottom"><i class="fa fa-search"></i></a>
                         <button type="button" data-toggle="modal" data-task="{{ task['name'] }}" data-task_id="{{ task['taskid'] }}" data-target="#reset_modal"
                                 class="btn btn-warning reset_state" title="{{ _('Reset state') }}">

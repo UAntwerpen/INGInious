@@ -4,109 +4,136 @@ Installation and deployment
 Supported platforms
 -------------------
 
-INGInious runs Linux containers and is therefore intended to run on Linux.
+INGInious is intended to run on Linux (kernel 3.10+), but can also be run on macOS thanks to the Docker toolbox.
 
-You may be able to run it on other platforms supporting Linux containers, but no support is provided yet.
-If you are willing to contribute this, feel free to contact us on Github.
+.. NOTE::
+
+    While Docker is supported on Windows 10, INGInious does not provide support for Windows yet. If you are willing to
+    contribute this, feel free to contact us on Github.
 
 Dependencies setup
 ------------------
 
 INGInious needs:
 
-- Python_ 3.10+
-- Docker_ or Podman_
+- Python_ 3
+- Docker_
 - MongoDB_
+- Libtidy
+- LibZMQ
 
 .. _Docker: https://www.docker.com
-.. _Podman: https://podman.io/
 .. _Python: https://www.python.org/
 .. _MongoDB: http://www.mongodb.org/
 
-RHEL/Rocky/Alma Linux 8+
-````````````````````````
+RHEL/Rocky/Alma Linux 8+, Fedora 34+
+`````````````````````````````
 
-#. The previously mentioned dependencies can be installed:
+.. DANGER::
+    Due to compatibility issues, it is recommended to disable SELinux on the target machine.
 
-   .. code-block:: bash
+The previously mentioned dependencies can be installed, for Cent OS 7+ :
 
-     # dnf install -y epel-release && crb enable
-     # dnf install -y git gcc python3.12 python3.12-devel python3.12-pip dnf-plugins-core
-     # dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
-     # yum install -y docker-ce docker-ce-cli
-     # cat <<EOF > /etc/yum.repos.d/mongodb-org-8.0.repo
-     [mongodb-org-8.0]
-     name=MongoDB Repository
-     baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/8.0/x86_64/
-     gpgcheck=1
-     enabled=1
-     gpgkey=https://pgp.mongodb.com/server-8.0.asc
-     EOF
-     # dnf install -y mongodb-org mongodb-org-server
+.. code-block:: bash
 
-   You may also add ``xmlsec1-openssl-devel libtool-ltdl-devel`` for the SAML2 auth plugin.
+    # yum install -y epel-release
+    # yum install -y git gcc libtidy python38 python38-devel python38-pip python3-venv zeromq-devel yum-utils
+    # yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    # yum install -y docker-ce docker-ce-cli
+    # cat <<EOF > /etc/yum.repos.d/mongodb-org-7.0.repo
+    [mongodb-org-7.0]
+    name=MongoDB Repository
+    baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/7.0/x86_64/
+    gpgcheck=1
+    enabled=1
+    gpgkey=https://pgp.mongodb.com/server-7.0.asc
+    EOF
+    # yum install -y mongodb-org mongodb-org-server
 
-#. You can now enable and start the ``mongod`` and ``docker`` services:
-   ::
+Or, for Fedora 34+:
 
-      # systemctl enable --now mongod docker
+.. code-block:: bash
 
-#. Check the cgroups version the container runtime is running on:
-   ::
-      # docker info | grep "Cgroup"
-   If the cgroups version is ``2`` and cgroups driver is ``systemd``, apply the following systemd rule:
-   ::
-      # cat /etc/systemd/system/docker-.scope.d/99-inginious.conf
-      [Scope]
-      OOMPolicy=kill
+    # yum install -y git gcc libtidy python3 python3-devel python3-pip python3-venv zeromq-devel dnf-plugins-core
+    # dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+    # dnf install -y docker-ce docker-ce-cli
+    # cat <<EOF > /etc/yum.repos.d/mongodb-org-7.0.repo
+    [mongodb-org-7.0]
+    name=MongoDB Repository
+    baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/7.0/x86_64/
+    gpgcheck=1
+    enabled=1
+    gpgkey=https://pgp.mongodb.com/server-7.0.asc
+    EOF
+    # yum install -y mongodb-org mongodb-org-server
 
-Ubuntu 24.04+
+You may also add ``xmlsec1-openssl-devel libtool-ltdl-devel`` for the SAML2 auth plugin.
+
+You can now start and enable the ``mongod`` and ``docker`` services:
+::
+
+    # systemctl start mongod
+    # systemctl enable mongod
+    # systemctl start docker
+    # systemctl enable docker
+    
+Ubuntu 22.04+
 `````````````
 
-#. The previously mentioned dependencies can be installed:
 
-   .. code-block:: bash
+The previously mentioned dependencies can be installed, for Ubuntu 22.04+:
 
-      $ sudo apt install git gcc python3-pip python3-dev python3-venv
-      $ sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-      $ sudo chmod a+r /etc/apt/keyrings/docker.asc
-      $ sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
-      Types: deb
-      URIs: https://download.docker.com/linux/ubuntu
-      Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
-      Components: stable
-      Architectures: $(dpkg --print-architecture)
-      Signed-By: /etc/apt/keyrings/docker.asc
-      EOF
-      $ sudo apt update
-      $ sudo apt install docker-ce docker-ce-cli
-      $ curl -fsSL https://pgp.mongodb.com/server-8.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
-      $ echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
-      $ sudo apt update
-      $ sudo apt install mongodb-org
+As previously said, INGInious needs some specific packages. Those can simply be add by running this command:
 
-   You may also add ``libxmlsec1-dev libltdl-dev`` for the SAML2 auth plugin.
+.. code-block:: bash
 
-#. You can now enable and start the ``mongod`` and ``docker`` services:
-   ::
+    sudo apt install git gcc tidy python3-pip python3-dev python3-venv libzmq3-dev apt-transport-https ca-certificates curl software-properties-common wget gnupg lsb-release
 
-      # systemctl enable --now mongod docker
+For Docker and MongoDB, some specific steps are needed:
 
-#. Check the cgroups version the container runtime is running on:
-   ::
-      # docker info | grep "Cgroup"
-   If the cgroups version is ``2`` and cgroups driver is ``systemd``, apply the following systemd rule:
-   ::
-      # cat /etc/systemd/system/docker-.scope.d/99-inginious.conf
-      [Scope]
-      OOMPolicy=kill
+First, Docker:
+
+.. code-block:: bash
+
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt update
+    sudo apt install docker-ce docker-ce-cli
+    docker info
+
+Then, Mongo:
+
+.. code-block:: bash
+
+    curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+    sudo apt update
+    sudo apt install mongodb-org
+    mongosh --eval 'db.runCommand({ connectionStatus: 1 })'
+.. NOTE::
+
+    Libssl installation is a temporary fix that is not required for all versions.
+    It may not work anymore (or may not be necessary) for future versions.
+
+You may also add ``libxmlsec1-dev libltdl-dev`` for the SAML2 auth plugin.
+
+You can now start and enable the ``mongod`` and ``docker`` services:
+
+.. code-block:: bash
+
+    systemctl daemon-reload
+    systemctl enable --now docker
+    systemctl enable --now mongod
+    
+
 
 macOS
 `````
 
 .. WARNING::
 
-    Documentation for macOS is outdated. Feel free to contribute.
+    While Docker supports both x86 and ARM containers on Apple silicon, compatibility hasn't been tested yet.
+    Feel free to contribute.
 
 We use brew_ to install some packages. Packages are certainly available too via macPorts.
 
@@ -114,9 +141,7 @@ We use brew_ to install some packages. Packages are certainly available too via 
 
 ::
 
-    $ brew tap mongodb/brew
-    $ brew update
-    $ brew install mongodb-community
+    $ brew install mongodb
     $ brew install python3
 
 Follow the instruction of brew to enable mongodb.
@@ -125,7 +150,8 @@ The next step is to install `Docker for Mac <https://docs.docker.com/docker-for-
 
 .. _Installpip:
 
-**Whatever the distribution, you should make docker available for non-root user:**
+Whatever the distribution, you should make docker available for non-root user:
+``````````````````````````````````````````````````````````````````````````````
 
 1. Run the ``groupadd`` command below to create a new group called ``docker``. Enter your password to continue running the command.
 
@@ -151,21 +177,13 @@ This command causes your user account to have non-user access.
 Installing INGInious
 --------------------
 
-To keep a clean distribution, we recommend to work with a virtualenv:
-
-.. code-block:: bash
-
-    python3 -m venv /path/to/venv/INGInious
-    source /path/to/venv/INGInious/bin/activate
-
-The recommended setup is to install INGInious via pip from PyPI.
+The recommended setup is to install INGInious via pip from PyPI in a virtual environment.
 This allows you to use the latest supported version.
 ::
 
     $ pip install --upgrade pip
     $ pip install --upgrade inginious
 
-This will automatically upgrade an existing version.
 
 .. note::
 
@@ -186,7 +204,7 @@ INGInious studio, that allows to modify and test your tasks directly in your bro
 that allows to interface with Learning Management System via the LTI_ specification. Any LMS supporting LTI_ is
 compatible. This includes Moodle, edX, among many others.
 
-.. _LTI: https://www.1edtech.org/standards/lti
+.. _LTI: http://www.imsglobal.org/LTI/v1p1/ltiIMGv1p1.html
 
 It is recommended to create a folder for INGInious and subfolders for tasks and backup, e.g.:
 ::
@@ -202,12 +220,12 @@ To configure the web app automatically, use the ``inginious-install`` CLI.
 
     $ inginious-install
 
-This will help you create the configuration file in the current directory.
+This will help you create the configuration file in the current directory. 
 When asked about the tasks folder, enter an absolute folder: /var/www/inginious/tasks .
 Similarly, when asked about the backup folder, enter an absolute folder: /var/www/inginious/backup .
 
 For manual configuration and details, see
-:ref:`ConfigReference`.
+:ref:`ConfigReference`. 
 In particular, make sure to add smtp configuration into your `configuration.yaml` file, since INGInious must send email during new user registration.
 
 The detailed ``inginious-install`` reference can be found at :ref:`inginious-install`.
@@ -393,12 +411,12 @@ to an empty string in addition to the rewrite rule.
 
 .. note::
 
-   The Default configuration doesn't optimize Inginious for performance, please refer to
+   The Default configuration doesn't optimize Inginious for performance, please refer to 
    https://redmine.lighttpd.net/projects/lighttpd/wiki/Docs_Performance for more about performance optimising
    you may also change 'max-procs' and append "PHP_FCGI_CHILDREN" => "someValue" inside "bin-environment"
    for more about these values check https://redmine.lighttpd.net/projects/lighttpd/wiki/Docs_PerformanceFastCGI
-
-
+ 
+   
 Finally, start the server:
 
 ::
@@ -464,7 +482,7 @@ You can then add virtual host entries in a ``/etc/httpd/vhosts.d/inginious.conf`
         ServerName my_inginious_domain
         LoadModule wsgi_module /usr/lib64/python3.5/site-packages/mod_wsgi/server/mod_wsgi-py35.cpython-35m-x86_64-linux-gnu.so
 
-        WSGIScriptAlias / "/usr/local/lib/python3.6/dist-packages/inginious/frontend/wsgi/webapp.py"
+        WSGIScriptAlias / "/usr/bin/inginious-webapp"
         WSGIScriptReloading On
 
         Alias /static /usr/lib/python3.6/site-packages/inginious/frontend/static
@@ -484,7 +502,7 @@ You can then add virtual host entries in a ``/etc/httpd/vhosts.d/inginious.conf`
         ServerName my_inginious_domain
         LoadModule wsgi_module /usr/lib64/python3.6/site-packages/mod_wsgi/server/mod_wsgi-py35.cpython-35m-x86_64-linux-gnu.so
 
-        WSGIScriptAlias / "/usr/local/lib/python3.6/dist-packages/inginious/frontend/wsgi/webdav.py"
+        WSGIScriptAlias / "/usr/bin/inginious-webdav"
         WSGIScriptReloading On
 
         <Directory "/usr/bin">
@@ -534,7 +552,7 @@ Add virtual host entries in a `/etc/apache2/sites-available/inginious.conf` file
   ::
 
     <VirtualHost *:80>
-        WSGIScriptAlias / "/usr/local/lib/python3.6/dist-packages/inginious/frontend/wsgi/webapp.py"
+        WSGIScriptAlias / "/usr/local/bin/inginious-webapp"
         WSGIScriptReloading On
 
         Alias /static /usr/local/lib/python3.6/dist-packages/inginious/frontend/static
@@ -555,7 +573,7 @@ Add virtual host entries in a `/etc/apache2/sites-available/inginious.conf` file
 
 
     <VirtualHost *:8080>
-            WSGIScriptAlias / "/usr/local/lib/python3.6/dist-packages/inginious/frontend/wsgi/webdav.py"
+            WSGIScriptAlias / "/usr/local/bin/inginious-webdav"
             WSGIScriptReloading On
 
             <Directory "/usr/local/bin">
@@ -597,11 +615,11 @@ All of them should be in status "active (running)".
 4  Check that wsgi is installed:
 
     # source /etc/apache2/envvars
-    # apache2 -M
+    # apache2 -M 
 
 The last line should be "wsgi_module (shared)".
 
-    # apache2 -S
+    # apache2 -S 
 
 There should be two lines under `VirtualHost configuration:` referring to `inginious.conf`.
 

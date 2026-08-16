@@ -4,18 +4,12 @@
 # more information about the licensing of this file.
 
 import re
-import json
 import flask
-from flask import session, render_template
-
-from pylti1p3.tool_config import ToolConfDict
-from jwcrypto.jwk import JWK
 
 from inginious.common.base import dict_from_prefix, id_checker
-from inginious.frontend.courses import Course
+from inginious.frontend.user_settings.field_types import FieldTypes
 from inginious.frontend.accessible_time import AccessibleTime
 from inginious.frontend.pages.course_admin.utils import INGIniousAdminPage
-from inginious.frontend.lti.v1_3 import lti_keyset_hash
 
 
 class CourseSettingsPage(INGIniousAdminPage):
@@ -23,28 +17,25 @@ class CourseSettingsPage(INGIniousAdminPage):
 
     def GET_AUTH(self, courseid):  # pylint: disable=arguments-differ
         """ GET request """
-        course, __ = self.get_course_and_check_rights(courseid, allow_all_staff=False)
+        course, __ = self.get_course_and_check_rights(courseid)
         return self.page(course)
 
     def POST_AUTH(self, courseid):  # pylint: disable=arguments-differ
         """ POST request """
-        course, __ = self.get_course_and_check_rights(courseid, allow_all_staff=False)
+        course, __ = self.get_course_and_check_rights(courseid)
 
         errors = []
         course_content = {}
 
         data = flask.request.form
-        course_content = course.get_descriptor()
+        course_content = self.course_factory.get_course_descriptor_content(courseid)
         course_content['name'] = data['name']
         if course_content['name'] == "":
             errors.append(_('Invalid name'))
         course_content['description'] = data['description']
         course_content['admins'] = list(map(str.strip, data['admins'].split(','))) if data['admins'].strip() else []
-        if not self.user_manager.user_is_superadmin() and session.username not in course_content['admins']:
+        if not self.user_manager.user_is_superadmin() and self.user_manager.session_username() not in course_content['admins']:
             errors.append(_('You cannot remove yourself from the administrators of this course'))
-        course_content['tutors'] = list(map(str.strip, data['tutors'].split(','))) if data['tutors'].strip() else []
-        if len(course_content['tutors']) == 1 and course_content['tutors'][0].strip() == "":
-            course_content['tutors'] = []
 
         course_content['groups_student_choice'] = True if data["groups_student_choice"] == "true" else False
 
@@ -97,65 +88,27 @@ class CourseSettingsPage(INGIniousAdminPage):
             if not re.match("^[a-zA-Z0-9]*$", lti_key):
                 errors.append(_("LTI keys must be alphanumerical."))
 
-        try:
-            lti_config = json.loads(data['lti_config'])
-            assert isinstance(lti_config, dict), 'Not a JSON object'
-            for iss in lti_config:
-                iss_config = lti_config[iss]
-                assert type(iss_config) is list, f'Issuer {iss} must have a list of client_id configuration'
-                for i, client_config in enumerate(iss_config):
-                    required_keys = {'default', 'client_id', 'auth_login_url', 'auth_token_url', 'key_set_url',
-                                     'private_key', 'public_key', 'deployment_ids'}
-                    for key in required_keys:
-                        assert key in client_config, f'Missing {key} in client config {i} of issuer {iss}'
-                    assert "key_set_url" in client_config or "key_set" in client_config, f'key_set_url or key_set is missing in client config {i} of issuer {iss}'
-            tool_conf = ToolConfDict(lti_config)
-            for iss in lti_config:
-                for i, client_config in enumerate(lti_config[iss]):
-                    tool_conf.set_private_key(iss, client_config['private_key'], client_id=client_config['client_id'])
-                    try:
-                        JWK.from_pem(client_config['private_key'].encode('utf-8')).export(
-                            private_key=True)  # Checks the private key format
-                    except ValueError:
-                        raise Exception(f"Error in private key of client config {i} of issuer {iss}")
-                    tool_conf.set_public_key(iss, client_config['public_key'], client_id=client_config['client_id'])
-                    try:
-                        JWK.from_pem(client_config['public_key'].encode('utf-8')).export(
-                            private_key=False)  # Checks the public key format
-                    except ValueError:
-                        raise Exception(f"Error in public key of client config {i} of issuer {iss}")
-            course_content['lti_config'] = lti_config
-        except json.JSONDecodeError as ex:
-            errors.append(_("LTI config couldn't parse as JSON") + ' - ' + str(ex))
-        except AssertionError as ex:
-            errors.append(_('LTI config is incorrect') + ' - ' + str(ex))
-        except Exception as ex:
-            errors.append(_('LTI config is incorrect') + ' - ' + str(ex))
-
-        course_content['lti_secrets'] = dict([x.rsplit("/", 1) for x in data['lti_secrets'].splitlines() if x])
-
-        for deployment, secret in course_content['lti_secrets'].items():
-            if not re.match("^[a-zA-Z0-9]*$", secret):
-                errors.append(_("LTI deployment secrets must be alphanumerical."))
-
         course_content['lti_send_back_grade'] = 'lti_send_back_grade' in data and data['lti_send_back_grade'] == "true"
 
         tag_error = self.define_tags(course, data, course_content)
         if tag_error is not None:
             errors.append(tag_error)
 
-
+        course_user_settings = self.define_course_user_settings(data)
+        if course_user_settings is not None and not isinstance(course_user_settings, dict):
+            errors.append(course_user_settings)
+        course_content["fields"] = course_user_settings
         if len(errors) == 0:
-            Course(courseid, course_content).save()
+            self.course_factory.update_course_descriptor_content(courseid, course_content)
             errors = None
-            course, __ = self.get_course_and_check_rights(courseid, allow_all_staff=False)  # don't forget to reload the modified course
+            course, __ = self.get_course_and_check_rights(courseid)  # don't forget to reload the modified course
 
         return self.page(course, errors, errors is None)
 
     def page(self, course, errors=None, saved=False):
         """ Get all data and display the page """
-        return render_template("course_admin/settings.html",
-                               course=course, errors=errors, saved=saved, lti_keyset_hash=lti_keyset_hash)
+        return self.template_helper.render("course_admin/settings.html", course=course, errors=errors, saved=saved,
+                                           field_types=FieldTypes)
 
     def define_tags(self, course, data, course_content):
         tags = self.prepare_datas(data, "tags")
@@ -178,8 +131,26 @@ class CourseSettingsPage(INGIniousAdminPage):
             del tag["id"]
 
         course_content["tags"] = tags
-        Course(course.get_id(), course_content).save()
-        return None
+        self.course_factory.update_course_descriptor_content(course.get_id(), course_content)
+
+    def define_course_user_settings(self, data):
+        """Course user settings definition method"""
+        fields = self.prepare_datas(data, "field")
+        if not isinstance(fields, dict):
+            # prepare_datas returned an error
+            return fields
+
+        # Repair fields
+        for field in fields.values():
+            try:
+                field["type"] = int(field["type"])
+            except:
+                return _("Invalid type value: {}").format(field["type"])
+            if not id_checker(field["id"]):
+                return _("Invalid id: {}").format(field["id"])
+
+            del field["id"]
+        return fields
 
     def prepare_datas(self, data, prefix: str):
         # prepare dict

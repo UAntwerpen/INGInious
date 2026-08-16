@@ -6,18 +6,17 @@
 {% block title %} Edit {{ audience["description"] }} {% endblock %}
 
 {% block column %}
-    {% with current='students' %}
-        {% include 'course_admin/menu.html' %}
-    {% endwith %}
+    {{ template_helper.call('course_admin_menu',course=course,current='students') | safe }}
 {% endblock %}
 
 {% block navbar %}
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{url_for('coursepage', courseid=course.get_id())}}">{{ course.get_name(session.language) }}</a></li>
-            <li class="breadcrumb-item"><a href="{{url_for('courseredirect', courseid=course.get_id())}}" title="{{ _('Administration') }}" data-toggle="tooltip" data-placement="bottom">
+            <li class="breadcrumb-item"><a href="{{ get_homepath() }}/mycourses" title="{{ _('My courses') }}" data-toggle="tooltip" data-placement="bottom"><i class="fa fa-graduation-cap"></i></a></li>
+            <li class="breadcrumb-item"><a href="{{get_homepath()}}/course/{{course.get_id()}}">{{ course.get_name(user_manager.session_language()) }}</a></li>
+            <li class="breadcrumb-item"><a href="{{get_homepath()}}/admin/{{course.get_id()}}" title="{{ _('Administration') }}" data-toggle="tooltip" data-placement="bottom">
                 <i class="fa fa-user-secret"></i></a></li>
-            <li class="breadcrumb-item"><a href="{{url_for('coursestudentlistpage', courseid=course.get_id())}}" title="{{ _('Audiences') }}" data-toggle="tooltip" data-placement="bottom">
+            <li class="breadcrumb-item"><a href="{{get_homepath()}}/admin/{{course.get_id()}}/students" title="{{ _('Audiences') }}" data-toggle="tooltip" data-placement="bottom">
                 <i class='fa fa-user'></i></a></li>
             <li class="breadcrumb-item active"><a href="#">{{ _("Edit audience {}").format(audience["description"]) }} <span class="sr-only">{{ _("(current)") }}</span></a></li>
         </ol>
@@ -54,9 +53,7 @@
                         </div>
                         <div class="col-md-9">
                             <div class="col-sm-10">
-                                {% with course_id=course.get_id(), current_users=[], name="registered_students", id="registered_students", placeholder=_("Enter something here to search for a user") %}
-                                    {% include "course_admin/user_selection_box.html" %}
-                                {% endwith %}
+                                {{ user_selection_box(current_users=[], name="registered_students", id="registered_students", placeholder=_("Enter something here to search for a user")) | safe }}
                             </div>
                         </div>
                     </div>
@@ -71,7 +68,7 @@
 </div>
 
 <form method="post" id="audience_form" class="form-horizontal">
-    <input type="hidden" id="_id" name="_id" value="{{audience.id}}" />
+    <input type="hidden" id="_id" name="_id" value="{{audience['_id']}}" />
 
     <div class="card mb-3">
         <div class="card-header">
@@ -86,7 +83,7 @@
                             <input type="text" class="form-control" id="description" name="description" placeholder="{{ _('Audience description') }}" value="{{ audience['description'] }}">
                         </div>
                         <div class="col-xs-12 col-md-4">
-                            <button name="delete" value="{{audience.id}}" type="submit" class="form-control btn btn-block btn-danger"><span class="fa fa-trash"></span> {{ _("Delete audience") }}</button>
+                            <button name="delete" onclick="javascript:audience_delete('{{ audience._id }}')" class="form-control btn btn-block btn-danger"><span class="fa fa-trash"></span> {{ _("Delete audience") }}</button>
                         </div>
                     </div>
                 </div>
@@ -143,6 +140,7 @@
                     <i class="fa fa-plus"></i>
                 </a>
             </div>
+            <input id="size" type="hidden" class="form-control" value="0">
             <ul id="group_0" class="students list-group list-group-flush">
                 {% for username in audience["students"] %}
                     {% if username in users_info %}

@@ -10,23 +10,31 @@ import gettext
 import flask
 import tidylib
 
-from datetime import datetime, timezone
+from datetime import datetime
 from urllib.parse import urlparse
 from docutils import core, nodes
-from docutils.parsers.rst import directives, roles, Directive
+from docutils.parsers.rst import directives, Directive
 from docutils.parsers.rst.directives.admonitions import BaseAdmonition
 from docutils.parsers.rst.directives.body import CodeBlock
 from docutils.statemachine import StringList
 from docutils.writers import html4css1
 
 from inginious.frontend.accessible_time import parse_date
-from inginious.frontend.i18n import gettext as _
+
+
+def _get_inginious_translation():
+    # If we are on a webpage, or even anywhere in the app, this should be defined
+    if flask.has_app_context():
+        return flask.current_app.l10n_manager.get_translation_obj()
+    else:
+        return gettext.NullTranslations()
 
 
 class EmptiableCodeBlock(CodeBlock):
     def run(self):
         if not self.content:
-            self.content = [_("[no content]")]
+            translation = _get_inginious_translation()
+            self.content = [translation.gettext("[no content]")]
         return super(EmptiableCodeBlock, self).run()
 
 
@@ -60,8 +68,9 @@ class HiddenUntilDirective(Directive, object):
                              '%s' % (self.name, hidden_until))
 
         force_show = self.state.document.settings.force_show_hidden_until
+        translation = _get_inginious_translation()
 
-        after_deadline = hidden_until <= datetime.now(timezone.utc)
+        after_deadline = hidden_until <= datetime.now()
         if after_deadline or force_show:
             output = []
 
@@ -69,7 +78,8 @@ class HiddenUntilDirective(Directive, object):
             if not after_deadline and force_show:
                 node = nodes.caution()
                 self.add_name(node)
-                text = _("The feedback below will be hidden to the students until :time:`{}`.").format(hidden_until.isoformat())
+                text = translation.gettext("The feedback below will be hidden to the students until {}.").format(
+                    hidden_until.strftime("%d/%m/%Y %H:%M:%S"))
                 self.state.nested_parse(StringList(text.split("\n")), 0, node)
                 output.append(node)
 
@@ -83,9 +93,9 @@ class HiddenUntilDirective(Directive, object):
         else:
             node = nodes.caution()
             self.add_name(node)
-            text = _(
+            text = translation.gettext(
                 "A part of this feedback is hidden until {}. Please come back later and reload the submission to see the full feedback.").format(
-                hidden_until.isoformat())
+                hidden_until.strftime("%d/%m/%Y %H:%M:%S"))
             self.state.nested_parse(StringList(text.split("\n")), 0, node)
             return [node]
 
@@ -141,7 +151,7 @@ class _CustomHTMLWriter(html4css1.Writer, object):
                 attributes["target"] = "_blank"
             # Rewrite paths if we are in LTI mode
             # TODO: this should be an argument passed through all the functions
-            if flask.has_app_context() and flask.request.args.get('session_id'):
+            if re.match(r"^(/@[a-f0-9A-F_]*@)", flask.request.path if flask.has_app_context() else ""):
                 if tagname == 'a' and 'href' in attributes:
                     attributes['href'] = self.rewrite_lti_url(attributes['href'])
                 elif tagname == 'img' and 'src' in attributes:
@@ -152,7 +162,7 @@ class _CustomHTMLWriter(html4css1.Writer, object):
         def rewrite_lti_url(url):
             if urlparse(url).netloc: # If URL is absolute, don't do anything
                 return url
-            return 'asset/' + url + '?session_id=' + flask.request.args['session_id']
+            return 'asset/' + url
 
         def visit_table(self, node):
             """ Remove needless borders """
@@ -224,16 +234,10 @@ class _CustomHTMLWriter(html4css1.Writer, object):
                 self.body.append('</div>\n')
             self.body.append('</div>\n')
 
-        def visit_time(self, node):
-            self.body.append(self.starttag(node, 'time', datetime=node.children[0]))
-
-        def depart_time(self, node):
-            self.body.append('</time>')
-
 class ParsableText(object):
     """Allow to parse a string with different parsers"""
 
-    def __init__(self, content, mode="rst", show_everything=False):
+    def __init__(self, content, mode="rst", show_everything=False, translation=gettext.NullTranslations()):
         """
             content             The string to be parsed.
             mode                The parser to be used. Currently, only rst(reStructuredText) and HTML are supported.
@@ -244,6 +248,7 @@ class ParsableText(object):
             raise Exception("Unknown text parser: " + mode)
         self._content = content
         self._parsed = None
+        self._translation = translation
         self._mode = mode
         self._show_everything = show_everything
 
@@ -256,14 +261,15 @@ class ParsableText(object):
         if self._parsed is None:
             try:
                 if self._mode == "html":
-                    self._parsed = self.html(self._content, self._show_everything)
+                    self._parsed = self.html(self._content, self._show_everything, self._translation)
                 else:
-                    self._parsed = self.rst(self._content, self._show_everything, debug=debug)
+                    self._parsed = self.rst(self._content, self._show_everything, self._translation, debug=debug)
             except Exception as e:
                 if debug:
                     raise BaseException("Parsing failed") from e
                 else:
-                    self._parsed = _("<b>Parsing failed</b>: <pre>{}</pre>").format(html.escape(self._content))
+                    self._parsed = self._translation.gettext("<b>Parsing failed</b>: <pre>{}</pre>").format(
+                        html.escape(self._content))
         return self._parsed
 
     def __str__(self):
@@ -275,19 +281,22 @@ class ParsableText(object):
         return self.parse()
 
     @classmethod
-    def html(cls, string, show_everything=False):  # pylint: disable=unused-argument
+    def html(cls, string, show_everything=False,
+             translation=gettext.NullTranslations()):  # pylint: disable=unused-argument
         """Parses HTML"""
         out, _ = tidylib.tidy_fragment(string)
         return out
 
     @classmethod
-    def rst(cls, string, show_everything=False, initial_header_level=3, debug=False):
+    def rst(cls, string, show_everything=False, translation=gettext.NullTranslations(), initial_header_level=3,
+            debug=False):
         """Parses reStructuredText"""
         overrides = {
             'initial_header_level': initial_header_level,
             'doctitle_xform': False,
             'syntax_highlight': 'none',
             'force_show_hidden_until': show_everything,
+            'translation': translation,
             'raw_enabled': True,
             'file_insertion_enabled': False,
             'math_output': 'MathJax /this/does/not/need/to/exist.js',
@@ -300,22 +309,11 @@ class ParsableText(object):
                                    settings_overrides=overrides)
         return parts['body_pre_docinfo'] + parts['fragment']
 
-
 # override base directives
 def _gen_admonition_cls(cls):
     class GenAdm(CustomBaseAdmonition):
         node_class = cls
     return GenAdm
-
-
-class time(nodes.Inline, nodes.TextElement):
-    pass
-
-
-def time_role(name, rawtext, text, lineno, inliner, options={}, content=[]):
-    node = time(rawtext, text, **options)
-    return [node], []
-
 
 directives.register_directive("admonition", CustomAdmonition)
 directives.register_directive("attention", _gen_admonition_cls(nodes.attention))
@@ -329,4 +327,3 @@ directives.register_directive("tip", _gen_admonition_cls(nodes.tip))
 directives.register_directive("warning", _gen_admonition_cls(nodes.warning))
 directives.register_directive("hidden-until", HiddenUntilDirective)
 directives.register_directive("code-block", EmptiableCodeBlock)
-roles.register_local_role("time", time_role)

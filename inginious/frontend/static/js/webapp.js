@@ -4,8 +4,6 @@
 //
 "use strict";
 
-let dtf;
-
 $(function()
 {
     init_common();
@@ -25,8 +23,4 @@ function init_webapp()
         update_size();
         start_affix();
     }
-
-    $("time").each(function () {
-        $(this).text(dtf.format(new Date($(this).attr("datetime"))));
-    })
 }

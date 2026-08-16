@@ -38,7 +38,7 @@ class GroupSubmission(TaskConfigItem):
 
     @classmethod
     def get_template(cls):
-        return "course_admin/task_dispensers/config_items/groups.html"
+        return "task_dispensers_admin/config_items/groups.html"
 
     @classmethod
     def get_id(cls):
@@ -61,7 +61,7 @@ class Weight(TaskConfigItem):
 
     @classmethod
     def get_template(cls):
-        return "course_admin/task_dispensers/config_items/weight.html"
+        return "task_dispensers_admin/config_items/weight.html"
 
     @classmethod
     def get_id(cls):
@@ -86,7 +86,7 @@ class SubmissionStorage(TaskConfigItem):
 
     @classmethod
     def get_template(cls):
-        return "course_admin/task_dispensers/config_items/submission_storage.html"
+        return "task_dispensers_admin/config_items/submission_storage.html"
 
     @classmethod
     def get_id(cls):
@@ -111,7 +111,7 @@ class EvaluationMode(TaskConfigItem):
 
     @classmethod
     def get_template(cls):
-        return "course_admin/task_dispensers/config_items/evaluation_mode.html"
+        return "task_dispensers_admin/config_items/evaluation_mode.html"
 
     @classmethod
     def get_id(cls):
@@ -134,7 +134,7 @@ class Categories(TaskConfigItem):
 
     @classmethod
     def get_template(cls):
-        return "course_admin/task_dispensers/config_items/categories.html"
+        return "task_dispensers_admin/config_items/categories.html"
 
     @classmethod
     def get_id(cls):
@@ -157,7 +157,7 @@ class SubmissionLimit(TaskConfigItem):
 
     @classmethod
     def get_template(cls):
-        return "course_admin/task_dispensers/config_items/submission_limit.html"
+        return "task_dispensers_admin/config_items/submission_limit.html"
 
     @classmethod
     def get_id(cls):
@@ -182,7 +182,7 @@ class Accessibility(TaskConfigItem):
 
     @classmethod
     def get_template(cls):
-        return "course_admin/task_dispensers/config_items/accessibility.html"
+        return "task_dispensers_admin/config_items/accessibility.html"
 
     @classmethod
     def get_id(cls):
@@ -196,10 +196,10 @@ class Accessibility(TaskConfigItem):
     def get_value(cls, task_config):
         accessibility = task_config.get(cls.get_id(), cls.default)
         try:
-            result = AccessibleTime(accessibility)
+            AccessibleTime(accessibility)
         except Exception as message:
             raise InvalidTocException("Invalid task accessibility : {}".format(message))
-        return result
+        return accessibility
 
 
 class InvalidTocException(Exception):
@@ -302,7 +302,10 @@ class TerminalSection(Section):
         Section.__init__(self, structure)
         if not all(id_checker(id) for id in structure["tasks_list"]):
             raise InvalidTocException(_("One task id contains non alphanumerical characters"))
-        self._task_list = structure["tasks_list"]
+        if isinstance(structure["tasks_list"], dict):
+            self._task_list = [taskid for taskid, pos in sorted(structure["tasks_list"].items(), key=lambda l: l[1])]
+        else:
+            self._task_list = structure["tasks_list"]
 
     def is_terminal(self):
         return True
@@ -337,8 +340,8 @@ def check_toc(toc):
     try:
         result = SectionsList(toc)
     except Exception as ex:
-        return None, str(ex)
-    return result, "Valid TOC"
+        return False, str(ex)
+    return True, "Valid TOC"
 
 
 def parse_tasks_config(task_list, config_items, data):
@@ -360,18 +363,20 @@ def parse_tasks_config(task_list, config_items, data):
     for taskid, structure in data.items():
         try:
             for config_item in config_items:
-                config_item.get_value(structure)
+                id = config_item.get_id()
+                structure[id] = config_item.get_value(structure)
         except Exception as ex:
             raise InvalidTocException("In taskid {} : {}".format(taskid, str(ex)))
 
 
 def check_task_config(task_list, config_items, data):
     """
+
     :param data: the raw content of the task settings
     :return:  (True, '') if the settings are valid or (False, The error message) otherwise
     """
     try:
         parse_tasks_config(task_list, config_items, data)
-        return data, ''
+        return True, ''
     except Exception as ex:
-        return None, str(ex)
+        return False, str(ex)

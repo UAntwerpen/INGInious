@@ -7,15 +7,14 @@
 import json
 import re
 import flask
-from flask import current_app, Response
+from flask import Response
 
-from inginious.frontend.courses import Course
 from inginious.client.client_buffer import ClientBuffer
 from inginious.client.client_sync import ClientSync
 from inginious.frontend.pages.utils import INGIniousPage
 
 
-def init(plugin_manager, client, config):
+def init(plugin_manager, course_factory, client, config):
     """
         Init the external grader plugin. This simple grader allows only anonymous requests, and submissions are not stored in database.
 
@@ -33,7 +32,7 @@ def init(plugin_manager, client, config):
         Different types of request are available : see documentation
     """
     courseid = config.get('courseid', 'external')
-    course = Course.get(courseid)
+    course = course_factory.get_course(courseid)
     page_pattern = config.get('page_pattern', '/external')
     return_fields = re.compile(config.get('return_fields', '^(result|text|problems)$'))
 
@@ -86,15 +85,14 @@ def init(plugin_manager, client, config):
                     response.response = [json.dumps({"status": "error", "status_message": "Cannot open task"})]
                     return response
 
-                if not task.input_is_consistent(task_input, current_app.config.get('ALLOWED_FILE_EXTENSIONS'),
-                                                current_app.config.get('MAX_FILE_SIZE')):
+                if not task.input_is_consistent(task_input, self.default_allowed_file_extensions, self.default_max_file_size):
                     response.response = [json.dumps({"status": "error", "status_message": "Input is not consistent with the task"})]
                     return response
 
                 if post_input.get("async") is None:
                     # New sync job
                     try:
-                        result, grade, problems, tests, custom, state, archive, stdout, stderr = client_sync.new_job(0, course, task, task_input, "Plugin - Simple Grader")
+                        result, grade, problems, tests, custom, state, archive, stdout, stderr = client_sync.new_job(0, course.get_taskset(), task, task_input, "Plugin - Simple Grader")
                         job_return = {"result":result, "grade": grade, "problems": problems, "tests": tests, "custom": custom, "state": state, "archive": archive, "stdout": stdout, "stderr": stderr}
                     except:
                         response.response = [json.dumps({"status": "error", "status_message": "An internal error occurred"})]
@@ -104,7 +102,7 @@ def init(plugin_manager, client, config):
                     return response
                 else:
                     # New async job
-                    jobid = client_buffer.new_job(course, task, task_input, "Plugin - Simple Grader")
+                    jobid = client_buffer.new_job(0, course.get_taskset(), task, task_input, "Plugin - Simple Grader")
                     response.response = [json.dumps({"status": "done", "jobid": str(jobid)})]
                     return response
             elif "jobid" in post_input:
