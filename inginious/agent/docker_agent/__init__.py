@@ -73,8 +73,8 @@ class DockerAgent(Agent):
         :param address_host: hostname/ip/... to which external client should connect to access to the docker
         :param external_ports: iterable containing ports to which the docker instance can bind internal ports
         :param tmp_dir: temp dir that is used by the agent to start new containers
-        :param type: type of the container ("docker" or "kata")
-        :param runtime: runtime used by docker (the defaults are "runc" with docker or "kata-runtime" with kata)
+        :param type: type of the container ("docker")
+        :param runtime: runtime used by docker (the defaults are "runc" with docker)
         :param ssh_allowed: boolean to make this agent accept tasks with ssh or not
         """
         super(DockerAgent, self).__init__(context, backend_addr, friendly_name, concurrency)
@@ -497,10 +497,12 @@ class DockerAgent(Agent):
             environment = self._containers[environment_type][environment_name]["id"]
 
             if run_as_root:
-                runtime_name = {k for k in self._runtimes if self._runtimes[k].run_as_root}.pop()
-                runtime = self._runtimes[runtime_name].runtime
-            else:
-                runtime = self._containers[environment_type][environment_name]["runtime"]
+                self._logger.warning("Running student container as root is not supported yet.")
+                await self._write_to_container_stdin(write_stream, {"type": "run_student_retval", "retval": 254,
+                                                                    "socket_id": socket_id})
+                return
+
+            runtime = self._containers[environment_type][environment_name]["runtime"]
 
             ports_needed = [22] if ssh else []
             ports = {}
@@ -524,7 +526,6 @@ class DockerAgent(Agent):
                                                                            socket_id,
                                                                            parent_info.systemfiles_path,
                                                                            parent_info.course_common_student_path,
-                                                                           parent_info.environment_type,
                                                                            self.__get_fd_limit(),
                                                                            parent_info.container_id if share_network else None,
                                                                            ports)
@@ -648,29 +649,6 @@ class DockerAgent(Agent):
         write_stream.write(msg)
         await write_stream.drain()
 
-    async def _handle_student_container_outputs(self, student_reader_stream, grading_write_stream):
-        """ Receive outputs (stdout and stderr) from student_container and send them to grading_container without decoding """
-        buffer = bytearray()
-        try:
-            while not student_reader_stream.at_eof():
-                buffer = await self.read_stream(student_reader_stream, buffer)
-                while self.buffer_has_data(buffer):
-                    buffer, msg_encoded = self.read_buffer(buffer, decode=False)
-                    try:
-                        grading_write_stream.write(
-                            struct.pack('!I', len(msg_encoded)))  # Transfer the message without decoding it
-                        grading_write_stream.write(msg_encoded)
-                        await grading_write_stream.drain()
-                    except Exception as e:
-                        self._logger.info("Student container closed the stream")
-                        self._logger.info(e)
-                        return
-        except asyncio.IncompleteReadError:
-            self._logger.debug("Container output ended with an IncompleteReadError; It was probably killed.")
-            return
-        except:
-            self._logger.exception("Received incorrect message from student container")
-
     async def handle_running_container(self, info: DockerRunningJob, future_results):
         """ Talk with a container. Sends the initial input. Allows to start student containers """
         sock = await self._docker.attach_to_container(info.container_id)
@@ -684,18 +662,16 @@ class DockerAgent(Agent):
 
         # Send hello msg
         hello_msg = {"type": "start", "input": info.inputdata, "debug": info.debug,
-                     "envtypes": {x.envtype: x.shared_kernel for x in self._runtimes.values()}}
+                     "envtypes": {x.envtype: True for x in self._runtimes.values()}}
         if info.run_cmd is not None:
             hello_msg["run_cmd"] = info.run_cmd
         hello_msg["run_as_root"] = self._runtimes[info.environment_type].run_as_root
-        hello_msg["shared_kernel"] = self._runtimes[info.environment_type].shared_kernel
 
         await self._write_to_container_stdin(write_stream, hello_msg)
         result = None
 
         buffer = bytearray()
         try:
-            student_containers_streams = {}
             while not reader_stream.at_eof():
                 buffer = await self.read_stream(reader_stream, buffer)
                 while self.buffer_has_data(buffer):
@@ -724,38 +700,6 @@ class DockerAgent(Agent):
                                     self.create_student_container(info, socket_id, environment, memory_limit,
                                                                   time_limit, hard_time_limit, share_network,
                                                                   write_stream, ssh, run_as_root))
-
-                        elif msg["type"] == "run_student_init":  # We use non docker-docker communication !
-                            if msg["student_container_id"] not in student_containers_streams:
-                                student_containers_streams[
-                                    msg["student_container_id"]] = await self.open_student_stream(
-                                    msg["student_container_id"])
-                            await self._write_to_container_stdin(
-                                student_containers_streams[msg["student_container_id"]][1],
-                                {"type": "run_student_init",
-                                 "socket_id": msg["socket_id"],
-                                 "command": msg["command"],
-                                 "teardown_script": msg["teardown_script"],
-                                 "student_container_id": msg[
-                                     "student_container_id"],
-                                 "working_dir": msg["working_dir"],
-                                 "ssh": msg["ssh"],
-                                 "user": msg["user"]})
-
-                            if msg["ssh"]:
-                                await self.start_ssh(student_containers_streams[msg["student_container_id"]][0],
-                                                     info)  # If using ssh with kata: wait for ssh info and start ssh
-                            else:  # classical run_student (not ssh_student) with a kata runtime -> handle student_container outputs
-                                self._start_background_task(self._handle_student_container_outputs(
-                                    student_containers_streams[msg["student_container_id"]][0], write_stream))
-
-                        elif msg["type"] in ["stdin", "student_signal"]:  # Simply transfer to student_container
-                            if msg["student_container_id"] not in student_containers_streams:
-                                student_containers_streams[
-                                    msg["student_container_id"]] = await self.open_student_stream(
-                                    msg["student_container_id"])
-                            await self._write_to_container_stdin(
-                                student_containers_streams[msg["student_container_id"]][1], msg)
 
                         elif msg["type"] == "ssh_debug":
                             # send the data to the frontend (and client) to reach grading_container
@@ -797,12 +741,6 @@ class DockerAgent(Agent):
 
         if not result:
             self._logger.warning("Container %s has not given any result", info.container_id)
-
-    async def open_student_stream(self, student_container_id):
-        student_sock = await self._docker.attach_to_container(student_container_id)
-        student_reader_stream, student_write_stream = await asyncio.open_connection(sock=student_sock._sock)
-        stream = (student_reader_stream, student_write_stream)
-        return stream
 
     async def handle_student_job_closing(self, container_id, retval):
         """ Handle a closing student container. Do some cleaning, verify memory limits, timeouts, ... and returns data to the associated grading container """
@@ -1021,13 +959,11 @@ class DockerAgent(Agent):
     def _detect_runtimes(self) -> Dict[str, DockerRuntime]:
         heuristic = [
             ("runc", lambda x, y: DockerRuntime(runtime=x, run_as_root=False, enables_gpu=False,
-                                                shared_kernel=True, envtype="docker-ssh" if y else "docker")),
+                                                envtype="docker-ssh" if y else "docker")),
             ("crun", lambda x, y: DockerRuntime(runtime=x, run_as_root=False, enables_gpu=False,
-                                                shared_kernel=True, envtype="docker-ssh" if y else "docker")),
-            ("kata", lambda x, y: DockerRuntime(runtime=x, run_as_root=True, enables_gpu=False,
-                                                shared_kernel=False, envtype="kata-ssh" if y else "kata")),
+                                                envtype="docker-ssh" if y else "docker")),
             ("nvidia", lambda x, y: DockerRuntime(runtime=x, run_as_root=False, enables_gpu=True,
-                                                  shared_kernel=True, envtype="nvidia-ssh" if y else "nvidia"))
+                                                  envtype="nvidia-ssh" if y else "nvidia"))
         ]
         retval = {}
 

@@ -12,7 +12,7 @@ on:
 env:
   REGISTRY: "ghcr.io"
   VERSION: "${{ github.event_name == 'push' && github.ref_name || (github.event_name == 'release' && github.event.release.tag_name || 'ci') }}"
-  CORE_CONTAINERS: "backend frontend agent_mcq agent_docker"
+  CORE_CONTAINERS: "backend frontend agent_mcq agent_docker webdav"
   ENV_CONTAINERS: "base default python3"
 
 jobs:
@@ -79,7 +79,7 @@ jobs:
       # Ensure that each python version will be tested even if one of them fails.
       fail-fast: false
       matrix:
-        python_version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python_version: ["3.11", "3.12", "3.13", "3.14"]
 
     runs-on: ubuntu-24.04
     services:
