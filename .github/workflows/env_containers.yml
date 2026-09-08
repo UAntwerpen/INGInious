@@ -1,11 +1,9 @@
 name: "CD: Env containers"
 
+# Upstream (INGInious/INGInious) workflow. Disabled in this fork: it calls the
+# INGInious/.github reusable workflow and pushes upstream env images. Our env
+# containers are built via build-docker-compose.yml. Kept for manual runs only.
 on:
-  push:
-    branches: [master]
-  release:
-    types: [published]
-
   workflow_dispatch:
 
 jobs:

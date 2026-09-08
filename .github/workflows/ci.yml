@@ -1,12 +1,10 @@
 name: "CI/CD"
 
+# Upstream (INGInious/INGInious) workflow. Disabled in this fork: it builds and
+# pushes ghcr.io/inginious/* images, which we do not maintain here. Our fork
+# builds only ghcr.io/uantwerpen/inginious/* via build-docker-compose.yml.
+# Kept for manual runs only (workflow_dispatch).
 on:
-  push:
-    branches: [ main, v0.9.x ]
-  pull_request:
-    branches: [ main, v0.9.x ]
-  release:
-    types: [published]
   workflow_dispatch:
 
 env:

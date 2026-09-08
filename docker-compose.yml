@@ -1,36 +1,53 @@
 services:
 
   env-base:
-    image: ${REGISTRY}/inginious/env-base:${VERSION}
+    image: ghcr.io/inginious/env-base:latest
     attach: false
     build:
       context: base-containers/base/
       target: env-base
       args:
-        - VERSION=${VERSION}
-        - REGISTRY=${REGISTRY}
+        - VERSION=latest
+        - REGISTRY=ghcr.io
     command: /bin/true
 
   env-default:
-    image: ${REGISTRY}/inginious/env-default:${VERSION}
+    image: ghcr.io/inginious/env-default:latest
     attach: false
     build:
       context: base-containers/base/
       target: env-default
       args:
-        - VERSION=${VERSION}
-        - REGISTRY=${REGISTRY}
+        - VERSION=latest
+        - REGISTRY=ghcr.io
     command: /bin/true
 
-  env-python3:
-    image: ${REGISTRY}/inginious/env-python3:${VERSION}
+  env-inleiding-programmeren:
+    image: ghcr.io/uantwerpen/inginious/env-inleiding-programmeren:latest
     attach: false
+    depends_on:
+      env-base:
+        condition: service_completed_successfully
     build:
-      context: base-containers/base/
-      target: env-python3
+      context: uantwerpen/containers/inleiding-programmeren/
+      target: env-cpp  # Dockerfile stage name (FROM ... AS env-cpp)
       args:
-        - VERSION=${VERSION}
-        - REGISTRY=${REGISTRY}
+        - VERSION=latest
+        - REGISTRY=ghcr.io
+    command: /bin/true
+
+  env-computer-graphics:
+    image: ghcr.io/uantwerpen/inginious/env-computer-graphics:latest
+    attach: false
+    depends_on:
+      env-base:
+        condition: service_completed_successfully
+    build:
+      context: uantwerpen/containers/computer-graphics/
+      target: env-computer-graphics
+      args:
+        - VERSION=latest
+        - REGISTRY=ghcr.io
     command: /bin/true
 
   db:
@@ -64,13 +81,13 @@ services:
       - inginious
 
   backend:
-    image: ${REGISTRY}/inginious/core-backend:${VERSION}
+    image: ghcr.io/uantwerpen/inginious/core-backend:latest
     build:
       dockerfile: deploy/Containerfile
       target: backend
       args:
-        - VERSION=${VERSION}
-        - REGISTRY=${REGISTRY}
+        - VERSION=latest
+        - REGISTRY=ghcr.io/uantwerpen
     environment:
       AGENT: "tcp://0.0.0.0:2001"
       CLIENT: "tcp://0.0.0.0:2000"
@@ -78,7 +95,7 @@ services:
       - inginious
 
   agent-docker:
-    image: ${REGISTRY}/inginious/core-agent_docker:${VERSION}
+    image: ghcr.io/uantwerpen/inginious/core-agent_docker:latest
     depends_on:
       backend:
         condition: service_started
@@ -86,7 +103,9 @@ services:
         condition: service_completed_successfully
       env-default:
         condition: service_completed_successfully
-      env-python3:
+      env-inleiding-programmeren:
+        condition: service_completed_successfully
+      env-computer-graphics:
         condition: service_completed_successfully
     deploy:
       replicas: 1
@@ -94,8 +113,8 @@ services:
       dockerfile: deploy/Containerfile
       target: agent_docker
       args:
-        - VERSION=${VERSION}
-        - REGISTRY=${REGISTRY}
+        - VERSION=latest
+        - REGISTRY=ghcr.io/uantwerpen
     environment:
       BACKEND: "tcp://backend:2001"
     security_opt:
@@ -103,14 +122,14 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:z
       # See https://github.com/INGInious/INGInious/issues/352
-      - ./tasks:/inginious/tasks:z
+      - ./uantwerpen/courses:/inginious/tasks:z
       # See https://github.com/INGInious/INGInious/issues/799
       - /tmp/agent_data:/tmp/agent_data:z
     networks:
       - inginious
 
   agent-mcq:
-    image: ${REGISTRY}/inginious/core-agent_mcq:${VERSION}
+    image: ghcr.io/inginious/core-agent_mcq:latest
     depends_on:
       backend:
         condition: service_started
@@ -120,8 +139,8 @@ services:
       dockerfile: deploy/Containerfile
       target: agent_mcq
       args:
-        - VERSION=${VERSION}
-        - REGISTRY=${REGISTRY}
+        - VERSION=latest
+        - REGISTRY=ghcr.io
     environment:
       BACKEND: "tcp://backend:2001"
     volumes:
@@ -133,13 +152,13 @@ services:
       - inginious
 
   frontend:
-    image: ${REGISTRY}/inginious/core-frontend:${VERSION}
+    image: ghcr.io/uantwerpen/inginious/core-frontend:latest
     build:
       dockerfile: deploy/Containerfile
       target: frontend
       args:
-        - VERSION=${VERSION}
-        - REGISTRY=${REGISTRY}
+        - VERSION=latest
+        - REGISTRY=ghcr.io/uantwerpen
     depends_on:
       db:
         condition: service_started
@@ -147,27 +166,33 @@ services:
         condition: service_started
     environment:
       - INGINIOUS_WEBAPP_HOST=0.0.0.0
+      # DEV ONLY: enables GET /dev-login (see dev_auth plugin). Remove for prod.
+      - INGINIOUS_DEV_LOGIN=1
     volumes:
       - ./configuration.deploy.yaml:/inginious/configuration.yaml:z
-      - ./tasks:/inginious/tasks:z
+      # Mounted on /inginious (the container workdir, on sys.path) so that:
+      #  - tasks_directory "uantwerpen/courses" resolves, and
+      #  - the "uantwerpen.plugins.*" plugin modules are importable.
+      - ./uantwerpen:/inginious/uantwerpen:z
     networks:
       - inginious
 
   webdav:
-    image: ${REGISTRY}/inginious/core-webdav:${VERSION}
+    image: ghcr.io/inginious/core-webdav:latest
     build:
       dockerfile: deploy/Containerfile
       target: webdav
       args:
-        - VERSION=${VERSION}
-        - REGISTRY=${REGISTRY}
+        - VERSION=latest
+        - REGISTRY=ghcr.io
     environment:
       - INGINIOUS_WEBDAV_HOST=0.0.0.0
     depends_on:
       - db
     volumes:
       - ./configuration.deploy.yaml:/inginious/configuration.yaml:z
-      - ./tasks/:/inginious/tasks:z
+      # Same rationale as the frontend service (tasks_directory + plugin imports).
+      - ./uantwerpen:/inginious/uantwerpen:z
     networks:
       - inginious
 

@@ -29,3 +29,6 @@ db
 # Build files
 build/lib
 build/scripts-*
+
+# Ignore courses
+uantwerpen/courses/*

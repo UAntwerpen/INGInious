@@ -5,6 +5,13 @@
 {% block title %}{{_("Welcome")}}{% endblock %}
 
 {% block content %}
+{# When local registration is disabled and a single external auth method is #}
+{# configured (SAML2), skip the chooser and go straight to it. #}
+{% if not config.ALLOW_REGISTRATION and (auth_methods | length) == 1 %}
+{% for id, auth_method in auth_methods.items() %}
+<script>window.location.replace("{{ url_for('authenticationpage', auth_id=id) }}");</script>
+{% endfor %}
+{% endif %}
 <div class="row justify-content-center">
     <div class="col-sm-4">
         <div class="card card-body bg-light">

@@ -4,7 +4,7 @@ ARG VERSION=main
 ARG REGISTRY=ghcr.io
 FROM ${REGISTRY}/inginious/env-base:${VERSION} AS env-cpp
 
-LABEL org.inginious.grading.name="cpp"
+LABEL org.inginious.grading.name="inleiding-programmeren"
 LABEL org.inginious.grading.agent_version=4
 LABEL org.opencontainers.image.source=https://github.com/UAntwerpen/INGInious
 
