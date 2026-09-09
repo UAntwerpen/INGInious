@@ -41,22 +41,31 @@ RUN dnf -y install \
     && dnf clean all \
     && rm -rf /tmp/Python*
 
-# Make Python 3.10 the default python3
-RUN ln -sf /usr/local/bin/python3.10 /bin/python3
+# inginious_container_api is installed by env-base into the SYSTEM python.
+# Copy it (pure-Python) into the 3.10 site-packages, locating it via the
+# system interpreter so we do not depend on the exact path. Runs before the
+# python3 symlink swap below, so /usr/bin/python3 is still the system python.
+RUN set -eux; \
+    sys_sp="$(/usr/bin/python3 -c 'import os, inginious_container_api as m; print(os.path.dirname(os.path.dirname(m.__file__)))')"; \
+    cp -r "$sys_sp"/inginious_container_api* /usr/local/lib/python3.10/site-packages/
 
-# Copy inginious_container_api from system python to Python 3.10
-RUN cp -r /usr/lib/python*/site-packages/inginious_container_api* \
-          /usr/local/lib/python3.10/site-packages/ || true
-
-# Upgrade pip and install packages for Python 3.10
-# Must include all packages that INGInious base scripts require (msgpack, pyzmq, pydevd-pycharm, etc.)
-RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && python3 -m pip install --no-cache-dir \
-        msgpack pyzmq jinja2 PyYAML timeout-decorator pydevd-pycharm \
+# Python 3.10 runtime deps for the INGInious container scripts + course libs.
+# Keep in sync with base-containers/base/pyproject.toml [project.dependencies].
+RUN /usr/local/bin/python3.10 -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && /usr/local/bin/python3.10 -m pip install --no-cache-dir \
+        msgpack pyzmq jinja2 PyYAML timeout-decorator ipython pydevd-pycharm \
         numpy scikit-image
+
+# Make Python 3.10 the default python3 (course grading scripts call `python3`).
+# The console scripts in /usr/local/bin (INGInious, feedback, ...) have a
+# `#!/usr/bin/python3` shebang and will now run under 3.10.
+RUN ln -sf /usr/local/bin/python3.10 /usr/bin/python3
 
 # -------------------------
 # Verification
 # -------------------------
 
-RUN gcc --version && g++ --version && python3 --version
+RUN set -eux; \
+    gcc --version; g++ --version; python3 --version; \
+    test "$(readlink -f "$(command -v python3)")" = /usr/local/bin/python3.10; \
+    python3 -c 'import inginious_container_api, msgpack, zmq, jinja2, yaml, IPython'

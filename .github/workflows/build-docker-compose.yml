@@ -18,6 +18,8 @@ on:
 env:
   REGISTRY: ghcr.io/uantwerpen
   VERSION: ${{ github.sha }}
+  # Upstream base env image tag to build our grading containers FROM.
+  UPSTREAM_ENV_TAG: latest
 
 jobs:
   build-and-push:
@@ -59,32 +61,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build base environment images (from base-containers/base/Dockerfile with multiple targets)
-      - name: Build and push env-base
-        uses: docker/build-push-action@v7
-        with:
-          context: ./base-containers/base/
-          target: env-base
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/inginious/env-base:latest
-            ${{ env.REGISTRY }}/inginious/env-base:${{ env.VERSION }}
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            REGISTRY=${{ env.REGISTRY }}
-
-      - name: Build and push env-default
-        uses: docker/build-push-action@v7
-        with:
-          context: ./base-containers/base/
-          target: env-default
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/inginious/env-default:latest
-            ${{ env.REGISTRY }}/inginious/env-default:${{ env.VERSION }}
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            REGISTRY=${{ env.REGISTRY }}
+      # env-base and env-default are NOT built here: they are unchanged from
+      # upstream and consumed directly from ghcr.io/inginious/env-*:latest
+      # (see UPSTREAM_ENV_TAG below and the FROM lines in
+      # uantwerpen/containers/*/Dockerfile).
 
       # Build core images (from deploy/Containerfile with multiple targets)
       - name: Build and push core-backend
@@ -115,19 +95,9 @@ jobs:
             VERSION=${{ env.VERSION }}
             REGISTRY=${{ env.REGISTRY }}
 
-      - name: Build and push core-agent_mcq
-        uses: docker/build-push-action@v7
-        with:
-          context: ./
-          file: ./deploy/Containerfile
-          target: agent_mcq
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/inginious/core-agent_mcq:latest
-            ${{ env.REGISTRY }}/inginious/core-agent_mcq:${{ env.VERSION }}
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            REGISTRY=${{ env.REGISTRY }}
+      # core-agent_mcq is NOT built here: it is unchanged from upstream and
+      # consumed directly from ghcr.io/inginious/core-agent_mcq (see the
+      # agent-mcq service in docker-compose.yml).
 
       - name: Build and push core-frontend
         uses: docker/build-push-action@v7
@@ -153,8 +123,8 @@ jobs:
             ${{ env.REGISTRY }}/inginious/env-computer-graphics:latest
             ${{ env.REGISTRY }}/inginious/env-computer-graphics:${{ env.VERSION }}
           build-args: |
-            VERSION=${{ env.VERSION }}
-            REGISTRY=${{ env.REGISTRY }}
+            VERSION=${{ env.UPSTREAM_ENV_TAG }}
+            REGISTRY=ghcr.io
 
       - name: Build and push env-inleiding-programmeren
         uses: docker/build-push-action@v7
@@ -166,5 +136,5 @@ jobs:
             ${{ env.REGISTRY }}/inginious/env-inleiding-programmeren:latest
             ${{ env.REGISTRY }}/inginious/env-inleiding-programmeren:${{ env.VERSION }}
           build-args: |
-            VERSION=${{ env.VERSION }}
-            REGISTRY=${{ env.REGISTRY }}
+            VERSION=${{ env.UPSTREAM_ENV_TAG }}
+            REGISTRY=ghcr.io

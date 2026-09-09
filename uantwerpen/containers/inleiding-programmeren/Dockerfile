@@ -15,11 +15,11 @@ RUN dnf -y install dnf-utils
 RUN dnf -y install dnf-plugins-core && \
     dnf config-manager --set-enabled crb || true
 
-# Install GCC 13+ (supports C++20)
-RUN dnf -y install gcc gcc-c++ make
+# Install GCC 13+ (supports C++20) and valgrind (used by the C++ grader for leak checks)
+RUN dnf -y install gcc gcc-c++ make valgrind
 
-# Verify GCC version
-RUN gcc --version && g++ --version
+# Verify GCC and valgrind
+RUN gcc --version && g++ --version && valgrind --version
 
 # Upgrade pip and install packages for Python
 RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel \
