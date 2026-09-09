@@ -15,8 +15,9 @@ function init_task_page(evaluate)
         return false;
     });
 
-    //Init the button that start a remote ssh server for debugging
-    $('form#task #task-submit-debug').on('click', function() {
+    //Init the button(s) that start a remote ssh server for debugging.
+    //There is one per problem card plus one at the bottom, so bind by class.
+    $('form#task .task-submit-debug').on('click', function() {
         submitTask(true);
     });
 
