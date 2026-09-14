@@ -9,7 +9,7 @@ configuration.yaml
 configuration.*.yaml
 !configuration.example.yaml
 !configuration.lti.example.yaml
-!configuration.deploy.yaml
+configuration.deploy.yaml
 
 dump
 doc/_*

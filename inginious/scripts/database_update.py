@@ -34,7 +34,7 @@ def get_config(configfile):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", help="Configuration file", default="")
+    parser.add_argument("-c", "--config", help="Configuration file", default=os.environ.get("INGINIOUS_WEBAPP_CONFIG", ""))
     parser.add_argument("-v", "--verbose", help="Display more output", action='store_true')
     args = parser.parse_args()
 
