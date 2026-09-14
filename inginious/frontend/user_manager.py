@@ -319,10 +319,15 @@ class UserManager:
             User.objects(email=session.email).update(**{"bindings__" + auth_id: [username, additional]})
         else:
             # No binding, check for email
-            if User.objects(email=email).first():
-                # Found an email, existing user account, abort without binding
-                self._logger.exception("The binding email is already used by another account!")
-                return False
+            existing_profile = User.objects(email=email).first()
+            if existing_profile:
+                # Existing account (e.g. from a previously used auth method) with
+                # a matching, provider-verified email: link this new binding to it
+                # rather than aborting, since the identity provider is trusted as
+                # the source of truth for email ownership.
+                User.objects(email=email).update(**{"bindings__" + auth_id: [username, additional]})
+                existing_profile.reload()
+                self.connect_user(existing_profile)
             else:
                 # New user, create an account using email address
                 user_profile = User(username="", realname=realname, email=email,

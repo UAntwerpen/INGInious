@@ -121,7 +121,8 @@ class SAMLAuthMethod(AuthMethod):
                 return str(username), realname, email, additional
         else:
             logging.getLogger('inginious.webapp.plugin.auth.saml').error("Errors while processing response : " +
-                                                                         ", ".join(errors))
+                                                                         ", ".join(errors) +
+                                                                         " | reason: " + str(auth.get_last_error_reason()))
             return None
 
     def get_settings(self):
@@ -140,8 +141,15 @@ def prepare_request(settings):
 
     # If server is behind proxys or balancers use the HTTP_X_FORWARDED fields
     url_data = urlparse(flask.request.url)
+    # The scheme seen by Flask/ProxyFix cannot be trusted here: the reverse
+    # proxy chain in front of this app is only partially under our control
+    # (an external, ICT-managed edge proxy terminates TLS and forwards plain
+    # HTTP onward), so X-Forwarded-Proto ends up reflecting only the last hop.
+    # The configured ACS url is the source of truth for the scheme instead.
+    acs_url = settings["sp"]["assertionConsumerService"]["url"]
+    is_https = acs_url.startswith("https://")
     return {
-        'https': 'on' if flask.request.scheme == 'https' else 'off',
+        'https': 'on' if is_https else 'off',
         'http_host': flask.request.host,
         'server_port': url_data.port,
         'script_name': flask.request.path,
