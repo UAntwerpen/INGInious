@@ -55,6 +55,14 @@ def get_app(configfile=None):
     signal.signal(signal.SIGINT, lambda _, _2: close_app_signal())
     signal.signal(signal.SIGTERM, lambda _, _2: close_app_signal())
 
+    # Fix Reverse Proxy
+    reverse_proxy_config = config.get('reverse-proxy-config', {})
+    if reverse_proxy_config.get('enable', False):
+        application = ProxyFix(application,
+                                x_for=reverse_proxy_config.get('x-for', 1),
+                                x_host=reverse_proxy_config.get('x-host', 1),
+                                x_proto=reverse_proxy_config.get('x-proto', 1))
+
     return config, application
 
 def main():
@@ -72,15 +80,6 @@ def main():
 
     config, application = get_app(configfile)
     logging.getLogger("inginious.webapp").info("http://%s:%d/" % (host, int(port)))
-
-    # Fix Reverse Proxy
-    reverse_proxy_config = config.get('reverse-proxy-config', {})
-    reverse_proxy_enable = reverse_proxy_config.get('enable', False)
-    x_for = reverse_proxy_config.get('x-for', 1)
-    x_host = reverse_proxy_config.get('x-host', 1)
-
-    if reverse_proxy_enable:
-        application = ProxyFix(application, x_for=x_for, x_host=x_host)
 
     # Launch the app
     run_simple(host, port, application, use_debugger=config.get("web_debug", False), threaded=True)

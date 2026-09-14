@@ -9,6 +9,8 @@ configuration.yaml
 configuration.*.yaml
 !configuration.example.yaml
 !configuration.lti.example.yaml
+!configuration.deploy.yaml
+
 dump
 doc/_*
 utils/task_manual_tester/tests/
