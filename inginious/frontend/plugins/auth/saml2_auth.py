@@ -131,11 +131,12 @@ class SAMLAuthMethod(AuthMethod):
 def prepare_request(settings):
     """ Prepare SAML request """
 
-    # Set the ACS url and binding method
-    settings["sp"]["assertionConsumerService"] = {
-        "url": flask.request.url_root + "auth/callback/" + settings["id"],
-        "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-    }
+    # Set the ACS url and binding method, unless already explicitly configured
+    if not settings["sp"].get("assertionConsumerService", {}).get("url"):
+        settings["sp"]["assertionConsumerService"] = {
+            "url": flask.request.url_root + "auth/callback/" + settings["id"],
+            "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+        }
 
     # If server is behind proxys or balancers use the HTTP_X_FORWARDED fields
     url_data = urlparse(flask.request.url)
