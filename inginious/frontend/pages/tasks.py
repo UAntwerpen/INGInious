@@ -120,7 +120,7 @@ class BaseTaskPage(object):
             )
 
             submissionid = user_task.submissionid
-            eval_submission = Submission.objects.get(id=submissionid) if submissionid else None
+            eval_submission = Submission.objects(id=submissionid).first() if submissionid else None
 
             students = [session.username]
             if course.get_task_dispenser().get_group_submission(taskid) and not self.user_manager.has_admin_rights_on_course(course, username):

@@ -9,4 +9,4 @@ class CourseClass(Document):
     id = StringField(primary_key=True)
     students = ListField(StringField())
 
-    meta = {"collection": "courses"}
+    meta = {"collection": "courses", "strict": False}
